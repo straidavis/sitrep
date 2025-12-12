@@ -1,0 +1,54 @@
+{
+  "name": "sitrep-client",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "description": "Aircraft Materiel Condition Report",
+  "author": "USCG",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:start": "vite build && electron .",
+    "package": "vite build && electron-builder build --win portable"
+  },
+  "dependencies": {
+    "@azure/msal-browser": "^4.27.0",
+    "@azure/msal-react": "^3.0.23",
+    "date-fns": "^3.6.0",
+    "dexie": "^4.0.8",
+    "dexie-react-hooks": "^1.1.7",
+    "lucide-react": "^0.441.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.0",
+    "recharts": "^2.12.7",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "electron-squirrel-startup": "^1.0.0",
+    "vite": "^4.4.0"
+  },
+  "build": {
+    "appId": "com.uscg.amcr",
+    "productName": "Aircraft Materiel Condition Report",
+    "directories": {
+      "output": "dist_electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "public/uscg-logo.svg"
+    }
+  }
+}
