@@ -49,6 +49,19 @@
     "win": {
       "target": "portable",
       "icon": "public/uscg-logo.svg"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "../server",
+        "to": "server",
+        "filter": [
+          "**/*",
+          "!**/*.sqlite",
+          "!**/*.log",
+          "!package-lock.json",
+          "!**/test/**"
+        ]
+      }
+    ]
   }
 }

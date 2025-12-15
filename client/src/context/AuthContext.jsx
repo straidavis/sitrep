@@ -104,12 +104,12 @@ const MsalAuthProvider = ({ children }) => {
 
 // Mock Auth Provider for Development
 const MockAuthProvider = ({ children }) => {
-    // Mock State: Always logged in as Editor
+    // Mock State: Always logged in as Admin
     const [isAuthenticated, setIsAuthenticated] = useState(true);
     const [user] = useState({
-        name: 'Dev User',
-        username: 'dev@sitrep.local',
-        id: 'mock-id-123'
+        name: 'Admin User',
+        username: 'admin@shield.ai',
+        id: 'admin-id-001'
     });
     const roles = ['Sitrep.Editor', 'Sitrep.Admin'];
 

@@ -112,4 +112,4 @@ The application includes a built-in Admin Portal for authorized users:
 ---
 
 ## 📄 License
-United States Coast Guard / Proprietary - Internal Use Only.
+Shield AI / Proprietary - Internal Use Only.

@@ -33,9 +33,11 @@ if (useAzureDb) {
     );
 } else {
     console.log('Using Local SQLite Database');
+    const dbPath = process.env.DB_PATH || path.join(__dirname, '../database.sqlite');
+    console.log('DB Path:', dbPath);
     sequelize = new Sequelize({
         dialect: 'sqlite',
-        storage: path.join(__dirname, '../database.sqlite'), // Moved up to root of server dir
+        storage: dbPath,
         logging: false
     });
 }

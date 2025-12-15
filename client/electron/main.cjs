@@ -38,7 +38,57 @@ const createWindow = () => {
     }
 };
 
-app.on('ready', createWindow);
+let serverProcess;
+
+const startServer = () => {
+    const isDev = !app.isPackaged;
+    let scriptPath;
+
+    if (isDev) {
+        scriptPath = path.join(__dirname, '../../server/index.js');
+    } else {
+        // In production, we expect 'server' folder to be in resources
+        scriptPath = path.join(process.resourcesPath, 'server/index.js');
+    }
+
+    const dbPath = path.join(app.getPath('userData'), 'sitrep_database.sqlite');
+    console.log(`Starting server from: ${scriptPath}`);
+    console.log(`Database path: ${dbPath}`);
+
+    const { fork } = require('child_process');
+
+    // Check if script exists
+    const fs = require('fs');
+    if (!fs.existsSync(scriptPath)) {
+        console.error('Server script not found at:', scriptPath);
+        return;
+    }
+
+    serverProcess = fork(scriptPath, [], {
+        env: { ...process.env, DB_PATH: dbPath, PORT: 3001, NODE_ENV: isDev ? 'development' : 'production' },
+        stdio: 'inherit'
+    });
+
+    serverProcess.on('message', (msg) => {
+        console.log('Server message:', msg);
+    });
+
+    serverProcess.on('error', (err) => {
+        console.error('Server process error:', err);
+    });
+};
+
+app.on('ready', () => {
+    startServer();
+    createWindow();
+});
+
+app.on('before-quit', () => {
+    if (serverProcess) {
+        console.log('Killing server process...');
+        serverProcess.kill();
+    }
+});
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
