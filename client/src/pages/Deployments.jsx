@@ -149,19 +149,7 @@ const Deployments = () => {
         return days + 1;
     };
 
-    const calculateTotalFinancials = (financials) => {
-        if (!financials) return 0;
-        return (financials.clins15Day || 0) +
-            (financials.clins1Day || 0) +
-            (financials.overAndAbove || 0);
-    };
 
-    const formatCurrency = (amount) => {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD'
-        }).format(amount || 0);
-    };
 
     if (loading) {
         return (
@@ -306,7 +294,7 @@ const Deployments = () => {
                                 <th>Start Date</th>
                                 <th>End Date</th>
                                 <th>Duration</th>
-                                <th>Financials</th>
+
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -314,7 +302,7 @@ const Deployments = () => {
                         <tbody>
                             {filteredDeployments.length === 0 ? (
                                 <tr>
-                                    <td colSpan="9" style={{ textAlign: 'center', padding: 'var(--spacing-xl)' }}>
+                                    <td colSpan="8" style={{ textAlign: 'center', padding: 'var(--spacing-xl)' }}>
                                         <p className="text-muted">
                                             {deployments.length === 0
                                                 ? 'No deployments recorded yet.'
@@ -343,9 +331,7 @@ const Deployments = () => {
                                             <td>
                                                 {calculateDuration(deployment.startDate, deployment.endDate)} days
                                             </td>
-                                            <td className="font-mono">
-                                                {formatCurrency(calculateTotalFinancials(deployment.financials))}
-                                            </td>
+
                                             <td>
                                                 <span className={`badge ${getStatusBadgeClass(deployment.status)}`}>
                                                     {deployment.status}

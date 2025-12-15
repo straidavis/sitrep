@@ -1,100 +1,87 @@
 import React, { useState, useEffect } from 'react';
 import { getAllDeployments } from '../db/deployments';
 import { useAuth } from '../context/AuthContext';
+import { Check, X } from 'lucide-react';
 
-const EquipmentForm = ({ equipment, onSave, onCancel }) => {
+const EquipmentForm = ({ equipment, defaultDeploymentId, onSave, onCancel }) => {
     const { canEdit } = useAuth();
+    const [deployments, setDeployments] = useState([]);
 
+    // Initial State
     const [formData, setFormData] = useState({
-        date: '',
+        date: new Date().toISOString().split('T')[0], // Default to today
         category: 'Aircraft',
         equipment: '',
         serialNumber: '',
         status: 'FMC',
-        deploymentId: '',
+        deploymentId: defaultDeploymentId || '',
         location: '',
         software: '',
         comments: ''
     });
 
     const [errors, setErrors] = useState({});
-    const [deployments, setDeployments] = useState([]);
 
     const categories = ['Aircraft', 'Payloads', 'Launchers', 'GCS', 'Radios'];
     const statuses = [
-        { value: 'FMC', label: 'FMC', color: 'green' },
-        { value: 'PMC', label: 'PMC', color: 'yellow' },
-        { value: 'NMC', label: 'NMC', color: 'red' },
-        { value: 'CAT5', label: 'CAT5', color: 'grey' }
+        { value: 'FMC', label: 'FMC (Fully Mission Capable)', color: 'text-success' },
+        { value: 'PMC', label: 'PMC (Partially Mission Capable)', color: 'text-warning' },
+        { value: 'NMC', label: 'NMC (Not Mission Capable)', color: 'text-error' },
+        { value: 'CAT5', label: 'CAT5 (Out of Service)', color: 'text-muted' }
     ];
 
+    // Load Deployments
     useEffect(() => {
-        loadDeployments();
+        const loadVars = async () => {
+            try {
+                const data = await getAllDeployments();
+                // Sort active first
+                data.sort((a, b) => (a.status === 'Active' ? -1 : 1));
+                setDeployments(data);
+            } catch (error) {
+                console.error('Error loading deployments:', error);
+            }
+        };
+        loadVars();
     }, []);
 
+    // Load Equipment Data if Editing
     useEffect(() => {
         if (equipment) {
             setFormData({
-                date: equipment.date || '',
+                date: equipment.date?.split('T')[0] || new Date().toISOString().split('T')[0],
                 category: equipment.category || 'Aircraft',
                 equipment: equipment.equipment || '',
                 serialNumber: equipment.serialNumber || '',
                 status: equipment.status || 'FMC',
-                deploymentId: equipment.deploymentId || '',
+                deploymentId: equipment.deploymentId || defaultDeploymentId || '',
                 location: equipment.location || '',
                 software: equipment.software || '',
                 comments: equipment.comments || ''
             });
+        } else if (defaultDeploymentId) {
+            setFormData(prev => ({ ...prev, deploymentId: defaultDeploymentId }));
         }
-    }, [equipment]);
-
-    const loadDeployments = async () => {
-        try {
-            const data = await getAllDeployments();
-            setDeployments(data);
-        } catch (error) {
-            console.error('Error loading deployments:', error);
-        }
-    };
+    }, [equipment, defaultDeploymentId]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
-        }));
-        // Clear error when user starts typing
-        if (errors[name]) {
-            setErrors(prev => ({
-                ...prev,
-                [name]: ''
-            }));
-        }
+        setFormData(prev => ({ ...prev, [name]: value }));
+        if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
     };
 
     const validate = () => {
         const newErrors = {};
-
-        if (!formData.date) {
-            newErrors.date = 'Date is required';
-        }
-        if (!formData.equipment) {
-            newErrors.equipment = 'Equipment name is required';
-        }
-        if (!formData.serialNumber) {
-            newErrors.serialNumber = 'Serial number is required';
-        }
-
+        if (!formData.date) newErrors.date = 'Date is required';
+        if (!formData.equipment) newErrors.equipment = 'Equipment name is required';
+        if (!formData.serialNumber) newErrors.serialNumber = 'Serial number is required';
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
     const handleSubmit = (e) => {
         e.preventDefault();
-
-        if (!validate()) {
-            return;
-        }
+        if (!validate()) return;
 
         const now = new Date().toISOString();
         const equipmentData = {
@@ -108,34 +95,28 @@ const EquipmentForm = ({ equipment, onSave, onCancel }) => {
     };
 
     return (
-        <form onSubmit={handleSubmit} className="form">
-            <div className="form-grid">
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Date */}
-                <div className="form-group">
-                    <label htmlFor="date" className="form-label">
-                        Date <span className="text-danger">*</span>
-                    </label>
+                <div>
+                    <label className="form-label">Date <span className="text-error">*</span></label>
                     <input
                         type="date"
-                        id="date"
                         name="date"
-                        className={`form-input ${errors.date ? 'error' : ''}`}
+                        className={`input w-full ${errors.date ? 'border-error' : ''}`}
                         value={formData.date}
                         onChange={handleChange}
                         disabled={!canEdit}
                     />
-                    {errors.date && <span className="error-message">{errors.date}</span>}
+                    {errors.date && <span className="text-xs text-error mt-1">{errors.date}</span>}
                 </div>
 
                 {/* Category */}
-                <div className="form-group">
-                    <label htmlFor="category" className="form-label">
-                        Category <span className="text-danger">*</span>
-                    </label>
+                <div>
+                    <label className="form-label">Category <span className="text-error">*</span></label>
                     <select
-                        id="category"
                         name="category"
-                        className="form-input"
+                        className="select w-full"
                         value={formData.category}
                         onChange={handleChange}
                         disabled={!canEdit}
@@ -147,147 +128,124 @@ const EquipmentForm = ({ equipment, onSave, onCancel }) => {
                 </div>
 
                 {/* Equipment Name */}
-                <div className="form-group">
-                    <label htmlFor="equipment" className="form-label">
-                        Equipment <span className="text-danger">*</span>
-                    </label>
+                <div>
+                    <label className="form-label">Equipment Name <span className="text-error">*</span></label>
                     <input
                         type="text"
-                        id="equipment"
                         name="equipment"
-                        className={`form-input ${errors.equipment ? 'error' : ''}`}
+                        placeholder="e.g. V-BAT 128"
+                        className={`input w-full ${errors.equipment ? 'border-error' : ''}`}
                         value={formData.equipment}
                         onChange={handleChange}
-                        placeholder="Enter equipment name"
                         disabled={!canEdit}
                     />
-                    {errors.equipment && <span className="error-message">{errors.equipment}</span>}
+                    {errors.equipment && <span className="text-xs text-error mt-1">{errors.equipment}</span>}
                 </div>
 
                 {/* Serial Number */}
-                <div className="form-group">
-                    <label htmlFor="serialNumber" className="form-label">
-                        Serial Number <span className="text-danger">*</span>
-                    </label>
+                <div>
+                    <label className="form-label">Serial Number <span className="text-error">*</span></label>
                     <input
                         type="text"
-                        id="serialNumber"
                         name="serialNumber"
-                        className={`form-input ${errors.serialNumber ? 'error' : ''}`}
+                        placeholder="e.g. SN-1002"
+                        className={`input w-full ${errors.serialNumber ? 'border-error' : ''}`}
                         value={formData.serialNumber}
                         onChange={handleChange}
-                        placeholder="Enter serial number"
                         disabled={!canEdit}
                     />
-                    {errors.serialNumber && <span className="error-message">{errors.serialNumber}</span>}
+                    {errors.serialNumber && <span className="text-xs text-error mt-1">{errors.serialNumber}</span>}
                 </div>
 
                 {/* Status */}
-                <div className="form-group">
-                    <label htmlFor="status" className="form-label">
-                        Status <span className="text-danger">*</span>
-                    </label>
+                <div>
+                    <label className="form-label">Status <span className="text-error">*</span></label>
                     <select
-                        id="status"
                         name="status"
-                        className="form-input"
+                        className="select w-full"
                         value={formData.status}
                         onChange={handleChange}
                         disabled={!canEdit}
                     >
-                        {statuses.map(status => (
-                            <option key={status.value} value={status.value}>
-                                {status.label}
-                            </option>
+                        {statuses.map(s => (
+                            <option key={s.value} value={s.value}>{s.label}</option>
                         ))}
                     </select>
                 </div>
 
                 {/* Deployment */}
-                <div className="form-group">
-                    <label htmlFor="deploymentId" className="form-label">
-                        Deployment
-                    </label>
+                <div>
+                    <label className="form-label">Assigned Deployment</label>
                     <select
-                        id="deploymentId"
                         name="deploymentId"
-                        className="form-input"
+                        className="select w-full"
                         value={formData.deploymentId}
                         onChange={handleChange}
                         disabled={!canEdit}
                     >
-                        <option value="">Select Deployment (Optional)</option>
-                        {deployments.map(deployment => (
-                            <option key={deployment.id} value={deployment.id}>
-                                {deployment.name} - {deployment.location}
+                        <option value="">-- No Deployment --</option>
+                        {deployments.map(d => (
+                            <option key={d.id} value={d.id}>
+                                {d.name} {d.status === 'Active' ? '(Active)' : ''}
                             </option>
                         ))}
                     </select>
                 </div>
 
                 {/* Location */}
-                <div className="form-group">
-                    <label htmlFor="location" className="form-label">
-                        Location
-                    </label>
+                <div>
+                    <label className="form-label">Location / Storage</label>
                     <input
                         type="text"
-                        id="location"
                         name="location"
-                        className="form-input"
+                        placeholder="e.g. Hangar Deck"
+                        className="input w-full"
                         value={formData.location}
                         onChange={handleChange}
-                        placeholder="Enter location"
                         disabled={!canEdit}
                     />
                 </div>
 
                 {/* Software */}
-                <div className="form-group">
-                    <label htmlFor="software" className="form-label">
-                        Software
-                    </label>
+                <div>
+                    <label className="form-label">Software Version</label>
                     <input
                         type="text"
-                        id="software"
                         name="software"
-                        className="form-input"
+                        placeholder="e.g. v2.1.4"
+                        className="input w-full"
                         value={formData.software}
                         onChange={handleChange}
-                        placeholder="Enter software version"
-                        disabled={!canEdit}
-                    />
-                </div>
-
-                {/* Comments */}
-                <div className="form-group full-width">
-                    <label htmlFor="comments" className="form-label">
-                        Comments
-                    </label>
-                    <textarea
-                        id="comments"
-                        name="comments"
-                        className="form-input"
-                        value={formData.comments}
-                        onChange={handleChange}
-                        placeholder="Enter any additional comments"
-                        rows="3"
                         disabled={!canEdit}
                     />
                 </div>
             </div>
 
-            <div className="form-actions">
+            {/* Comments */}
+            <div>
+                <label className="form-label">Comments / Issues</label>
+                <textarea
+                    name="comments"
+                    rows="3"
+                    className="input w-full"
+                    placeholder="Describe any mechanical issues or maintenance notes..."
+                    value={formData.comments}
+                    onChange={handleChange}
+                    disabled={!canEdit}
+                ></textarea>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-4 border-t border-border mt-4">
                 <button type="button" className="btn btn-secondary" onClick={onCancel}>
-                    Close
+                    <X size={18} className="mr-2" />
+                    Cancel
                 </button>
                 {canEdit && (
                     <button type="submit" className="btn btn-primary">
+                        <Check size={18} className="mr-2" />
                         {equipment ? 'Update Equipment' : 'Add Equipment'}
                     </button>
-                )}
-                {!canEdit && (
-                    <span className="text-muted text-sm italic ml-4">Read Only Mode</span>
                 )}
             </div>
         </form>

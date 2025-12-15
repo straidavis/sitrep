@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../db/schema';
 import { useAuth } from '../context/AuthContext';
 import { useDeployment } from '../context/DeploymentContext';
-import { Briefcase, Upload, FileSpreadsheet, ChevronDown, ChevronRight, Package, Trash2, AlertCircle } from 'lucide-react';
+import { Briefcase, Upload, FileSpreadsheet, ChevronDown, ChevronRight, Package, Trash2, AlertCircle, Save } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { format } from 'date-fns';
 
@@ -98,7 +98,8 @@ const Kits = () => {
                     partNumber: row['Part No.'] || row['Part Number'] || row['PN'] || '',
                     description: row['Part Description'] || row['Description'] || '',
                     quantity: row['Quantity'] || row['Qty'] || 1,
-                    category: row['Location'] || row['Category'] || 'General' // Using Location as category/grouping
+                    category: row['Location'] || row['Category'] || 'General',
+                    serialNumber: row['S/N'] || row['S/N '] || row['Serial Number'] || row['Serial'] || ''
                 })).filter(item => item.partNumber || item.description); // Filter empty rows
 
                 setParsedData(mappedItems);
@@ -132,7 +133,8 @@ const Kits = () => {
                 partNumber: item.partNumber,
                 description: item.description,
                 quantity: item.quantity,
-                category: item.category
+                category: item.category,
+                serialNumber: item.serialNumber
             }));
 
             await db.kitItems.bulkAdd(items);
@@ -163,6 +165,57 @@ const Kits = () => {
 
     const toggleKit = (id) => {
         setExpandedKits(prev => ({ ...prev, [id]: !prev[id] }));
+    };
+
+    // S/N Update Logic
+    const [itemsToUpdate, setItemsToUpdate] = useState({});
+
+    const handleSnChange = (itemId, value) => {
+        setItemsToUpdate(prev => ({
+            ...prev,
+            [itemId]: { ...prev[itemId], serialNumber: value, noSn: false }
+        }));
+    };
+
+    const handleNoSn = (itemId, checked) => {
+        setItemsToUpdate(prev => ({
+            ...prev,
+            [itemId]: {
+                ...prev[itemId],
+                noSn: checked,
+                serialNumber: checked ? 'N/A' : ''
+            }
+        }));
+    };
+
+    const saveKitUpdates = async (kitId) => {
+        try {
+            // Find items for this kit that have verified changes
+            const kitItemList = kitItems[kitId] || [];
+            const idsInKit = new Set(kitItemList.map(i => i.id));
+
+            const updates = Object.keys(itemsToUpdate).filter(id => idsInKit.has(parseInt(id)));
+
+            if (updates.length === 0) return;
+
+            // Optional: Re-enable confirm if desired, but for now let's just save to ensure it works
+            // if (!confirm(`Update ${updates.length} items in this kit?`)) return;
+
+            await Promise.all(updates.map(id =>
+                db.kitItems.update(parseInt(id), { serialNumber: itemsToUpdate[id].serialNumber })
+            ));
+
+            setItemsToUpdate(prev => {
+                const next = { ...prev };
+                updates.forEach(id => delete next[id]);
+                return next;
+            });
+
+            await loadKits();
+        } catch (error) {
+            console.error('Failed to update kit items:', error);
+            alert('Failed to save changes. Check console for details.');
+        }
     };
 
     // Grouping Logic
@@ -243,30 +296,48 @@ const Kits = () => {
                                         const isKitExpanded = expandedKits[kit.id];
                                         const items = kitItems[kit.id] || [];
 
+                                        const pendingCount = Object.keys(itemsToUpdate).filter(id =>
+                                            items.some(i => i.id === parseInt(id))
+                                        ).length;
+
                                         return (
-                                            <div key={kit.id} className="border border-border rounded-lg overflow-hidden bg-bg-primary/50">
+                                            <div key={kit.id} className="border border-border rounded-lg overflow-hidden bg-bg-secondary/20">
                                                 {/* Inner Container: Kit Header */}
                                                 <div
-                                                    className="p-3 flex items-center justify-between cursor-pointer hover:bg-bg-tertiary transition-colors"
+                                                    className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-bg-tertiary transition-colors"
                                                     onClick={() => toggleKit(kit.id)}
                                                 >
                                                     <div className="flex items-center gap-3">
-                                                        {isKitExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                                        <Package size={18} className="text-accent-primary" />
+                                                        {isKitExpanded ? <ChevronDown size={18} className="text-muted" /> : <ChevronRight size={18} className="text-muted" />}
+                                                        <Package size={20} className="text-accent-primary" />
                                                         <div>
-                                                            <span className="font-semibold">{kit.name}</span>
-                                                            <span className="text-xs text-muted ml-2">v{kit.version}</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-semibold text-base">{kit.name}</span>
+                                                                <span className="badge badge-sm badge-secondary">v{kit.version}</span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-4">
-                                                        <span className="text-xs text-muted">{items.length} Items</span>
+                                                        <span className="text-xs text-muted font-medium">{items.length} Items</span>
+
+                                                        {/* Save Button */}
+                                                        {pendingCount > 0 && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); saveKitUpdates(kit.id); }}
+                                                                className="btn btn-xs btn-primary gap-1.5 flex items-center animate-bounce-in"
+                                                            >
+                                                                <Save size={14} />
+                                                                Save ({pendingCount})
+                                                            </button>
+                                                        )}
+
                                                         {canEdit && (
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); deleteKit(kit.id); }}
-                                                                className="text-muted hover:text-error"
+                                                                className="btn-icon text-muted hover:text-error"
                                                                 title="Delete Kit"
                                                             >
-                                                                <Trash2 size={16} />
+                                                                <Trash2 size={18} />
                                                             </button>
                                                         )}
                                                     </div>
@@ -274,26 +345,52 @@ const Kits = () => {
 
                                                 {/* Kit Items Table */}
                                                 {isKitExpanded && (
-                                                    <div className="border-t border-border">
+                                                    <div className="border-t border-border bg-bg-primary/30">
                                                         <div className="overflow-x-auto">
-                                                            <table className="table w-full text-sm">
-                                                                <thead>
-                                                                    <tr className="bg-bg-secondary text-left">
-                                                                        <th className="py-2 px-4 w-16">Qty</th>
-                                                                        <th className="py-2 px-4">Part No.</th>
+                                                            <table className="w-full text-sm text-left">
+                                                                <thead className="bg-bg-secondary text-muted font-medium text-xs uppercase tracking-wider">
+                                                                    <tr>
+                                                                        <th className="py-2 px-4 w-16 text-center">Qty</th>
+                                                                        <th className="py-2 px-4 w-1/4">Part No.</th>
                                                                         <th className="py-2 px-4">Description</th>
-                                                                        <th className="py-2 px-4">Category</th>
+                                                                        <th className="py-2 px-4 w-64 lg:w-80">Serial Number</th>
                                                                     </tr>
                                                                 </thead>
-                                                                <tbody>
-                                                                    {items.map((item, idx) => (
-                                                                        <tr key={idx} className="border-b border-border last:border-0 hover:bg-bg-secondary/50">
-                                                                            <td className="py-2 px-4 font-mono text-center">{item.quantity}</td>
-                                                                            <td className="py-2 px-4 font-medium text-accent-primary">{item.partNumber}</td>
-                                                                            <td className="py-2 px-4 text-secondary">{item.description}</td>
-                                                                            <td className="py-2 px-4 text-xs text-muted">{item.category}</td>
-                                                                        </tr>
-                                                                    ))}
+                                                                <tbody className="divide-y divide-border">
+                                                                    {items.map((item, idx) => {
+                                                                        const draft = itemsToUpdate[item.id];
+                                                                        const displaySn = draft ? draft.serialNumber : (item.serialNumber || '');
+                                                                        const isNoSn = draft ? draft.noSn : (item.serialNumber === 'N/A');
+
+                                                                        return (
+                                                                            <tr key={idx} className="hover:bg-bg-secondary/50 transition-colors">
+                                                                                <td className="py-2.5 px-4 font-mono text-center text-accent-primary">{item.quantity}</td>
+                                                                                <td className="py-2.5 px-4 font-medium">{item.partNumber}</td>
+                                                                                <td className="py-2.5 px-4 text-muted">{item.description}</td>
+                                                                                <td className="py-2.5 px-4">
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <input
+                                                                                            type="text"
+                                                                                            className={`input input-sm w-full h-8 text-xs font-mono ${draft ? 'border-primary ring-1 ring-primary/20' : 'bg-black/20 border-transparent hover:border-border'}`}
+                                                                                            placeholder={isNoSn ? "N/A" : "Enter S/N..."}
+                                                                                            value={displaySn}
+                                                                                            onChange={(e) => handleSnChange(item.id, e.target.value)}
+                                                                                            disabled={!canEdit || isNoSn}
+                                                                                        />
+                                                                                        <div
+                                                                                            className="flex items-center gap-1.5 cursor-pointer opacity-60 hover:opacity-100 transition-opacity"
+                                                                                            onClick={() => canEdit && handleNoSn(item.id, !isNoSn)}
+                                                                                            title="Mark as No S/N"
+                                                                                        >
+                                                                                            <div className={`w-4 h-4 border rounded flex items-center justify-center transition-colors ${isNoSn ? 'bg-primary border-primary' : 'border-muted hover:border-text-primary'}`}>
+                                                                                                {isNoSn && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        );
+                                                                    })}
                                                                 </tbody>
                                                             </table>
                                                         </div>

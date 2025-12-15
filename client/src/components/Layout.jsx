@@ -13,7 +13,11 @@ import {
     Check,
     LogOut,
     Shield,
-    Briefcase
+    Briefcase,
+    ClipboardList,
+    Truck,
+    Wifi,
+    WifiOff
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
@@ -24,15 +28,71 @@ const Layout = ({ children }) => {
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const dropdownRef = useRef(null);
+    const [serverConnected, setServerConnected] = useState(true); // Default false? Or optimistic?
 
-    const { selectedDeploymentIds, setSelectedDeploymentIds, deployments } = useDeployment();
+    // Check Server Connection
+    // Check Server Connection
+    useEffect(() => {
+        const checkStatus = async () => {
+            if (!window.navigator.onLine) {
+                setServerConnected(false);
+                return;
+            }
+            try {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+                const controller = new AbortController();
+                // Increased timeout to 5s
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                const res = await fetch(`${apiUrl}/health?t=${Date.now()}`, {
+                    signal: controller.signal,
+                    method: 'GET',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                clearTimeout(timeoutId);
+
+                if (res.ok) setServerConnected(true);
+                else setServerConnected(false);
+            } catch (e) {
+                console.warn("Connection check failed:", e);
+                setServerConnected(false);
+            }
+        };
+
+        checkStatus();
+        const interval = setInterval(checkStatus, 15000); // 15s check
+
+        const handleNetworkChange = () => checkStatus();
+        window.addEventListener('online', handleNetworkChange);
+        window.addEventListener('offline', handleNetworkChange);
+
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('online', handleNetworkChange);
+            window.removeEventListener('offline', handleNetworkChange);
+        };
+    }, []);
+
+    const { selectedDeploymentIds, setSelectedDeploymentIds, deployments, deployerWarning } = useDeployment();
     const { user, login, logout, isAuthenticated, roles } = useAuth();
+
+    // Determine Header Title based on Selection
+    const deploymentTitle = (() => {
+        if (selectedDeploymentIds.length === 1) {
+            const dep = deployments.find(d => d.id === selectedDeploymentIds[0]);
+            return dep ? dep.name : 'Unknown Deployment';
+        }
+        if (selectedDeploymentIds.length > 1) return 'Multiple Deployments Selected';
+        return 'Global View'; // or Aircraft Materiel Condition Report
+    })();
 
     const navItems = [
         { path: '/', icon: Home, label: 'Dashboard' },
         { path: '/flights', icon: Plane, label: 'Flights (AMCR)' },
         { path: '/equipment', icon: Package, label: 'Equipment' },
+        { path: '/inventory', icon: ClipboardList, label: 'Master Inventory' },
         { path: '/kits', icon: Briefcase, label: 'Inventory Kits' },
+        { path: '/parts', icon: Truck, label: 'Track Parts' },
         { path: '/deployments', icon: MapPin, label: 'Deployments' },
         { path: '/reports', icon: FileText, label: 'Reports' },
         { path: '/settings', icon: Settings, label: 'Settings' },
@@ -98,7 +158,9 @@ const Layout = ({ children }) => {
                         <img src="/logo.png" alt="USCG Logo" style={{ width: '40px', height: '40px' }} />
                         <div className="brand-text">
                             <h1>AMCR</h1>
-                            <p>Aircraft Materiel Condition Report</p>
+                            <p className={selectedDeploymentIds.length > 0 ? "text-accent-primary font-bold" : ""}>
+                                {deploymentTitle}
+                            </p>
                         </div>
                     </div>
 
@@ -237,10 +299,19 @@ const Layout = ({ children }) => {
                 </div>
             </header>
 
+            {deployerWarning && (
+                <div className="bg-warning/20 border-b border-warning/30 px-6 py-2 flex items-center justify-center gap-2 text-warning animate-in slide-in-from-top-2">
+                    <Check className="h-4 w-4" /> {/* Should be AlertTriangle but reusing existing imports if possible, or new import */}
+                    <span className="text-sm font-bold">
+                        Warning: You have multiple active deployments. Please ensure you are viewing the correct deployment context.
+                    </span>
+                </div>
+            )}
+
             <div className="app-body">
                 {/* Sidebar */}
-                <aside className={`app-sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
-                    <nav className="sidebar-nav">
+                <aside className={`app-sidebar ${sidebarOpen ? 'open' : 'closed'}`} style={{ display: 'flex', flexDirection: 'column' }}>
+                    <nav className="sidebar-nav" style={{ flex: 1, overflowY: 'auto' }}>
                         {navItems.map((item) => {
                             const Icon = item.icon;
                             return (
@@ -255,6 +326,23 @@ const Layout = ({ children }) => {
                             );
                         })}
                     </nav>
+
+                    {/* Server Status Footer */}
+                    <div className={`border-t border-border bg-transparent transition-all duration-300 ${sidebarOpen ? 'p-4 opacity-100' : 'p-0 opacity-0 overflow-hidden h-0 border-none'}`}>
+                        <div className="flex items-center gap-3 opacity-50 hover:opacity-100 transition-opacity duration-300">
+                            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${serverConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)] animate-pulse'}`}></div>
+                            <div className="flex flex-col">
+                                <span className={`text-[10px] font-bold uppercase tracking-[0.2em] leading-none ${serverConnected ? 'text-muted' : 'text-warning'}`}>
+                                    {serverConnected ? 'System Online' : 'Local Mode'}
+                                </span>
+                                {!serverConnected && (
+                                    <span className="text-[9px] text-muted mt-1 font-medium">
+                                        Updates sync when online
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </aside>
 
                 {/* Main Content */}

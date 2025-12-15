@@ -806,6 +806,7 @@ code {
   overflow-y: auto;
   transition: all var(--transition-base);
   flex-shrink: 0;
+  z-index: 50;
 }
 
 .app-sidebar.closed {
@@ -1328,4 +1329,47 @@ code {
 /* Fix for typo class compatibility */
 .bg-bg-secondary {
   background-color: var(--color-bg-secondary);
+}
+
+/* Button Icons */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  transition: all 0.2s;
+  cursor: pointer;
+  background-color: transparent;
+  border: none;
+}
+
+.btn-icon:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-accent-primary);
+}
+
+.btn-icon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Animations */
+.animate-bounce-in {
+  animation: bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes bounceIn {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+
+  60% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }

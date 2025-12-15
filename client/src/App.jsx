@@ -9,6 +9,9 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Kits from './pages/Kits';
 
+import Inventory from './pages/Inventory';
+import PartsTracking from './pages/PartsTracking';
+
 import { DeploymentProvider } from './context/DeploymentContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Admin from './pages/Admin';
@@ -29,28 +32,28 @@ const ProtectedRoute = ({ children, requiredRole }) => {
 
 function App() {
   return (
-    <AuthProvider>
-      <DeploymentProvider>
-        <Router>
-          <Layout>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/flights" element={<Flights />} />
-              <Route path="/equipment" element={<Equipment />} />
-              <Route path="/deployments" element={<Deployments />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/admin" element={
-                <ProtectedRoute requiredRole="Sitrep.Admin">
-                  <Admin />
-                </ProtectedRoute>
-              } />
-              <Route path="/kits" element={<Kits />} />
-            </Routes>
-          </Layout>
-        </Router>
-      </DeploymentProvider>
-    </AuthProvider>
+    <DeploymentProvider>
+      <Router>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/flights" element={<Flights />} />
+            <Route path="/equipment" element={<Equipment />} />
+            <Route path="/deployments" element={<Deployments />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/admin" element={
+              <ProtectedRoute requiredRole="Sitrep.Admin">
+                <Admin />
+              </ProtectedRoute>
+            } />
+            <Route path="/kits" element={<Kits />} />
+            <Route path="/parts" element={<PartsTracking />} />
+            <Route path="/inventory" element={<Inventory />} />
+          </Routes>
+        </Layout>
+      </Router>
+    </DeploymentProvider>
   );
 }
 

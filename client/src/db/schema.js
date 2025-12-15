@@ -8,16 +8,19 @@ import Dexie from 'dexie';
 export const db = new Dexie('SITREPDatabase');
 
 // Define database schema
-db.version(8).stores({
+db.version(9).stores({
     flights: '++id, date, missionNumber, aircraftNumber, launcher, numberOfLaunches, status, deploymentId, scheduledLaunchTime, launchTime, recoveryTime, createdAt, updatedAt',
     equipment: '++id, date, category, equipment, serialNumber, status, deploymentId, location, software, createdAt, updatedAt',
-    deployments: '++id, name, type, startDate, endDate, location, createdAt, updatedAt',
+    deployments: '++id, name, type, startDate, endDate, location, userEmails, createdAt, updatedAt',
     personnel: '++id, name, rank, role, createdAt, updatedAt',
     users: '++id, email, role, addedBy, createdAt', // Local permission overrides
     apiKeys: '++id, key, name, status, createdAt', // For external access
     settings: 'key',
     kits: '++id, name, version, deploymentId, createdAt',
-    kitItems: '++id, kitId, partNumber, description, quantity, category'
+    kitItems: '++id, kitId, partNumber, description, quantity, category, serialNumber, actualQuantity',
+    inventoryItems: '++id, deploymentId, partNumber, description, quantity, category, location, notes, createdAt, updatedAt',
+    shipments: '++id, uid, deploymentId, orderDate, shipDate, hostReceivedDate, siteReceivedDate, status, createdAt',
+    shipmentItems: '++id, shipmentId, partNumber, description, quantity, serialNumber, isNewItem, receivedDate'
 });
 
 // Type definitions for TypeScript-like intellisense

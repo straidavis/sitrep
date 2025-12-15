@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Initial Git initialization.
-- "Kits" management feature for inventory (Development In Progress).
+- "Kits" management feature for inventory (Completed).
 - Azure-ready backend architecture.
 - Admin Portal for API Key management.
 

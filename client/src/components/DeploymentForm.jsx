@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Save, X } from 'lucide-react';
+import { useDeployment } from '../context/DeploymentContext';
 import { useAuth } from '../context/AuthContext';
+import { db } from '../db/schema'; // Import db for user sync logic
 
 const DeploymentForm = ({ deployment, onSave, onCancel }) => {
     const { canEdit } = useAuth();
+    const { deployerWarning } = useDeployment();
 
     const [formData, setFormData] = useState({
         name: '',
@@ -12,16 +15,15 @@ const DeploymentForm = ({ deployment, onSave, onCancel }) => {
         endDate: '',
         location: '',
         equipment: '',
-        clins15Day: '',
-        clins1Day: '',
-        overAndAbove: '',
+        userEmails: '',
         status: 'Planning',
         notes: ''
     });
 
     const [errors, setErrors] = useState({});
-    const [calculatedTotal, setCalculatedTotal] = useState(0);
-    const [durationWarning, setDurationWarning] = useState('');
+
+    // State for managing new email input
+    const [newEmail, setNewEmail] = useState('');
 
     useEffect(() => {
         if (deployment) {
@@ -32,9 +34,7 @@ const DeploymentForm = ({ deployment, onSave, onCancel }) => {
                 endDate: deployment.endDate?.split('T')[0] || '',
                 location: deployment.location || '',
                 equipment: deployment.equipment?.join(', ') || '',
-                clins15Day: deployment.financials?.clins15Day || '',
-                clins1Day: deployment.financials?.clins1Day || '',
-                overAndAbove: deployment.financials?.overAndAbove || '',
+                userEmails: deployment.userEmails?.join(', ') || '',
                 status: deployment.status || 'Planning',
                 notes: deployment.notes || ''
             });
@@ -44,43 +44,6 @@ const DeploymentForm = ({ deployment, onSave, onCancel }) => {
     const deploymentTypes = ['Shore', 'Ship'];
     const statuses = ['Planning', 'Active', 'Completed', 'Cancelled'];
 
-    // Calculate financials and validations whenever relevant fields change
-    useEffect(() => {
-        calculateFinancials();
-    }, [formData.startDate, formData.endDate, formData.type, formData.clins15Day, formData.overAndAbove, formData.clins1Day]);
-
-    const calculateFinancials = () => {
-        if (!formData.startDate || !formData.endDate) {
-            setCalculatedTotal(0);
-            setDurationWarning('');
-            return;
-        }
-
-        const start = new Date(formData.startDate);
-        const end = new Date(formData.endDate);
-        const diffTime = Math.abs(end - start);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inclusive
-
-        if (formData.type === 'Shore') {
-            // Check for 15-day increments
-            if (diffDays % 15 !== 0) {
-                setDurationWarning(`Shore deployments must be increments of 15 days. Current duration: ${diffDays} days.`);
-            } else {
-                setDurationWarning('');
-            }
-
-            // Calculate Price: (15dayCLIN + OverAndAbove) per 15 days
-            const periods = Math.ceil(diffDays / 15);
-            const pricePerPeriod = (parseFloat(formData.clins15Day) || 0) + (parseFloat(formData.overAndAbove) || 0);
-            setCalculatedTotal(periods * pricePerPeriod);
-        } else {
-            // Ship: use 1-day CLIN * days
-            const daily = (parseFloat(formData.clins1Day) || 0) * diffDays;
-            setCalculatedTotal(daily);
-            setDurationWarning('');
-        }
-    };
-
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
@@ -88,6 +51,51 @@ const DeploymentForm = ({ deployment, onSave, onCancel }) => {
         if (errors[name]) {
             setErrors(prev => ({ ...prev, [name]: '' }));
         }
+    };
+
+    const handleAddEmail = async () => {
+        if (!newEmail || !newEmail.includes('@')) return; // Basic validation
+
+        const emailToAdd = newEmail.trim().toLowerCase();
+
+        // 1. Add to Form Data List
+        const currentList = formData.userEmails
+            ? (Array.isArray(formData.userEmails) ? formData.userEmails : String(formData.userEmails).split(',').filter(e => e))
+            : [];
+
+        if (!currentList.includes(emailToAdd)) {
+            const updatedList = [...currentList, emailToAdd];
+            setFormData(prev => ({ ...prev, userEmails: updatedList }));
+
+            // 2. SYNC LOGIC: Check/Add to Admin Portal (db.users)
+            try {
+                const existingUser = await db.users.where('email').equals(emailToAdd).first();
+                if (!existingUser) {
+                    await db.users.add({
+                        email: emailToAdd,
+                        role: 'Sitrep.Deployer',
+                        addedBy: 'System (Deployment Form)',
+                        createdAt: new Date().toISOString()
+                    });
+                    console.log(`Auto-added ${emailToAdd} as Deployer to Admin Portal`);
+                }
+            } catch (err) {
+                console.error("Failed to sync deployer to admin portal", err);
+            }
+        }
+
+        setNewEmail(''); // Reset input
+    };
+
+    const handleRemoveEmail = (emailToRemove) => {
+        const currentList = Array.isArray(formData.userEmails)
+            ? formData.userEmails
+            : String(formData.userEmails).split(',').filter(e => e);
+
+        setFormData(prev => ({
+            ...prev,
+            userEmails: currentList.filter(e => e !== emailToRemove)
+        }));
     };
 
     const validate = () => {
@@ -124,11 +132,9 @@ const DeploymentForm = ({ deployment, onSave, onCancel }) => {
                 .split(',')
                 .map(e => e.trim())
                 .filter(e => e),
-            financials: {
-                clins15Day: parseFloat(formData.clins15Day) || 0,
-                clins1Day: parseFloat(formData.clins1Day) || 0,
-                overAndAbove: parseFloat(formData.overAndAbove) || 0
-            },
+            userEmails: formData.userEmails
+                ? (Array.isArray(formData.userEmails) ? formData.userEmails : String(formData.userEmails).split(',').filter(e => e))
+                : [],
             status: formData.status,
             notes: formData.notes
         };
@@ -138,6 +144,11 @@ const DeploymentForm = ({ deployment, onSave, onCancel }) => {
 
     return (
         <form onSubmit={handleSubmit}>
+            {deployerWarning && (
+                <div className="mb-6 p-4 bg-warning/20 border border-warning/50 rounded-lg flex items-center gap-3 text-warning">
+                    <span className="font-bold">Warning: Multiple active deployments detected. Ensure you are editing the correct one.</span>
+                </div>
+            )}
             <div className="grid grid-cols-2" style={{ gap: 'var(--spacing-lg)' }}>
                 {/* Ship/Location (formerly Deployment Name) */}
                 <div className="form-group">
@@ -230,93 +241,8 @@ const DeploymentForm = ({ deployment, onSave, onCancel }) => {
                 </div>
             </div>
 
-            {/* Financial Information */}
-            <div style={{
-                marginTop: 'var(--spacing-lg)',
-                marginBottom: 'var(--spacing-lg)',
-                padding: 'var(--spacing-lg)',
-                backgroundColor: 'var(--color-bg-tertiary)',
-                borderRadius: 'var(--radius-md)'
-            }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-md)' }}>
-                    <h4 style={{ color: 'var(--color-text-primary)', margin: 0 }}>
-                        Financial Information
-                    </h4>
-                    <span style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>
-                        Estimated Total: <strong style={{ color: 'var(--color-primary)' }}>${calculatedTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                    </span>
-                </div>
-
-                {durationWarning && (
-                    <div style={{
-                        marginBottom: 'var(--spacing-md)',
-                        padding: 'var(--spacing-sm)',
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                        color: '#ef4444',
-                        borderRadius: 'var(--radius-sm)',
-                        fontSize: '0.9rem'
-                    }}>
-                        ⚠️ {durationWarning}
-                    </div>
-                )}
-
-                <div className="grid grid-cols-3" style={{ gap: 'var(--spacing-md)' }}>
-                    {/* Show 15-Day CLINs for both types */}
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label">15-Day CLINs ($)</label>
-                        <input
-                            type="number"
-                            name="clins15Day"
-                            className="input"
-                            placeholder="0.00"
-                            step="0.01"
-                            min="0"
-                            value={formData.clins15Day}
-                            onChange={handleChange}
-                            disabled={!canEdit}
-                        />
-                    </div>
-
-                    {/* Show 1-Day CLINs only for Ship */}
-                    {formData.type === 'Ship' && (
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                            <label className="form-label">1-Day CLINs ($)</label>
-                            <input
-                                type="number"
-                                name="clins1Day"
-                                className="input"
-                                placeholder="0.00"
-                                step="0.01"
-                                min="0"
-                                value={formData.clins1Day}
-                                onChange={handleChange}
-                                disabled={!canEdit}
-                            />
-                        </div>
-                    )}
-
-                    {/* Show Over & Above only for Shore */}
-                    {formData.type === 'Shore' && (
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                            <label className="form-label">Over & Above ($)</label>
-                            <input
-                                type="number"
-                                name="overAndAbove"
-                                className="input"
-                                placeholder="0.00"
-                                step="0.01"
-                                min="0"
-                                value={formData.overAndAbove}
-                                onChange={handleChange}
-                                disabled={!canEdit}
-                            />
-                        </div>
-                    )}
-                </div>
-            </div>
-
             {/* Equipment */}
-            <div className="form-group">
+            <div className="form-group" style={{ marginTop: 'var(--spacing-lg)' }}>
                 <label className="form-label">Equipment</label>
                 <input
                     type="text"
@@ -328,6 +254,61 @@ const DeploymentForm = ({ deployment, onSave, onCancel }) => {
                     disabled={!canEdit}
                 />
                 <span className="form-help">Separate multiple equipment IDs with commas</span>
+            </div>
+
+            {/* Authorized Deployers */}
+            <div className="form-group">
+                <label className="form-label">Authorized Deployers</label>
+
+                {/* Add New Input */}
+                <div className="flex gap-2 mb-2">
+                    <input
+                        type="email"
+                        className="input"
+                        placeholder="user@shield.ai"
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddEmail();
+                            }
+                        }}
+                        disabled={!canEdit}
+                    />
+                    <button type="button" className="btn btn-secondary" onClick={handleAddEmail} disabled={!canEdit}>
+                        Add
+                    </button>
+                </div>
+
+                {/* List View */}
+                <div className="space-y-1">
+                    {(() => {
+                        const list = Array.isArray(formData.userEmails)
+                            ? formData.userEmails
+                            : (formData.userEmails ? String(formData.userEmails).split(',').filter(e => e) : []);
+
+                        if (list.length === 0) return <div className="text-sm text-muted italic">No deployers assigned.</div>;
+
+                        return list.map((email, idx) => (
+                            <div key={idx} className="flex items-center justify-between bg-secondary p-2 rounded-md text-sm border border-border">
+                                <span>{email}</span>
+                                {canEdit && (
+                                    <button
+                                        type="button"
+                                        className="text-muted hover:text-error transition-colors"
+                                        onClick={() => handleRemoveEmail(email)}
+                                        title="Remove"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
+                            </div>
+                        ));
+                    })()}
+                </div>
+
+                <span className="form-help mt-1 block">Users added here will automatically be granted Deployer access if they don't have it.</span>
             </div>
 
             {/* Notes */}
