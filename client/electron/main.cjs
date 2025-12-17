@@ -10,7 +10,7 @@ const createWindow = () => {
         width: 1280,
         height: 800,
         center: true,
-        icon: path.join(__dirname, '../public/uscg-logo.svg'),
+        icon: path.join(__dirname, '../public/logo.png'),
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,

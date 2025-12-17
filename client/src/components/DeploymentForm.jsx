@@ -157,7 +157,7 @@ const DeploymentForm = ({ deployment, onSave, onCancel }) => {
                         type="text"
                         name="name"
                         className="input"
-                        placeholder="e.g., USCGC STONE / Operation Atlantic Shield"
+                        placeholder="e.g., DEPLOYMENT LOCATION / Operation Name"
                         value={formData.name}
                         onChange={handleChange}
                         disabled={!canEdit}

@@ -170,7 +170,7 @@ const Layout = ({ children }) => {
                     </button>
 
                     <div className="header-brand">
-                        <img src="logo.png" alt="USCG Logo" style={{ width: '40px', height: '40px' }} />
+                        <img src="logo.png" alt="App Logo" style={{ width: '40px', height: '40px' }} />
                         <div className="brand-text">
                             <h1>AMCR</h1>
                             <p className={selectedDeploymentIds.length > 0 ? "text-accent-primary font-bold" : ""}>

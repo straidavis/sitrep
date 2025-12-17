@@ -1,6 +1,6 @@
 /* ========================================
    SITREP - Design System & Global Styles
-   Dark Theme with USCG Branding
+   Dark Theme
    ======================================== */
 
 /* === CSS Reset & Base === */
@@ -20,7 +20,7 @@
   --color-bg-tertiary: #334155;
   --color-bg-elevated: #475569;
 
-  /* Accent Colors - USCG Blue/Orange */
+  /* Accent Colors - Brand Blue/Orange */
   --color-accent-primary: #0ea5e9;
   --color-accent-primary-hover: #0284c7;
   --color-accent-secondary: #f97316;

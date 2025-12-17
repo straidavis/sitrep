@@ -5,7 +5,7 @@
   "type": "module",
   "main": "electron/main.cjs",
   "description": "Aircraft Materiel Condition Report",
-  "author": "USCG",
+  "author": "Shield AI",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

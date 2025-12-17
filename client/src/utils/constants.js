@@ -95,8 +95,8 @@ export const CANCELLATION_CRITERIA = [
     { label: "Fuel - None on hand", responsible: "Shield AI" },
     { label: "High RPM", responsible: "Shield AI" },
     { label: "Low RPM", responsible: "Shield AI" },
-    { label: "Out of AO", responsible: "USCG" },
-    { label: "Ship - RAS", responsible: "USCG" }
+    { label: "Out of AO", responsible: "Client" },
+    { label: "Ship - RAS", responsible: "Client" }
 ];
 
 export const getResponsibleParty = (reason) => {
