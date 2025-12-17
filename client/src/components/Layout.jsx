@@ -27,6 +27,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useDeployment } from '../context/DeploymentContext';
 
+import { config } from '../config';
+
 const Layout = ({ children }) => {
     const location = useLocation();
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -42,7 +44,7 @@ const Layout = ({ children }) => {
                 return;
             }
             try {
-                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+                const apiUrl = config.serverUrl;
                 const controller = new AbortController();
                 // Increased timeout to 5s
                 const timeoutId = setTimeout(() => controller.abort(), 5000);

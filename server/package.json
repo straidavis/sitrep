@@ -5,7 +5,8 @@
     "main": "index.js",
     "scripts": {
         "start": "node index.js",
-        "dev": "nodemon index.js"
+        "dev": "nodemon index.js",
+        "pkg": "pkg ."
     },
     "dependencies": {
         "cors": "^2.8.5",
@@ -13,9 +14,39 @@
         "express": "^4.18.2",
         "sequelize": "^6.37.1",
         "sqlite3": "^5.1.7",
-        "tedious": "^19.1.3"
+        "tedious": "14.1.0"
+    },
+    "overrides": {
+        "@azure/identity": "2.1.0",
+        "@azure/keyvault-keys": "4.4.0",
+        "@azure/core-client": "1.7.0",
+        "@azure/core-rest-pipeline": "1.8.1",
+        "@azure-rest/core-client": "1.1.6",
+        "@azure/core-auth": "1.4.0",
+        "@azure/core-util": "1.1.1",
+        "@azure/abort-controller": "1.1.0",
+        "@azure/core-lro": "2.5.0",
+        "@azure/core-paging": "1.5.0",
+        "@azure/core-tracing": "1.0.0",
+        "@azure/logger": "1.0.3",
+        "@azure/keyvault-common": "1.0.0",
+        "@typespec/ts-http-runtime": "0.3.0"
     },
     "devDependencies": {
-        "nodemon": "^3.0.3"
+        "nodemon": "^3.0.3",
+        "pkg": "^5.8.1"
+    },
+    "bin": "index.js",
+    "pkg": {
+        "scripts": "index.js",
+        "assets": [
+            "config/**/*",
+            "models/**/*",
+            "node_modules/**/*"
+        ],
+        "targets": [
+            "node16-win-x64"
+        ],
+        "outputPath": "dist"
     }
 }

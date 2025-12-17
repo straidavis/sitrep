@@ -1,3 +1,37 @@
+const fs = require('fs');
+const path = require('path');
+
+// Try to load local config (for standalone EXE usage)
+// Search priority: 1. Next to EXE, 2. Root dir via ../client (dev)
+const exeDir = path.dirname(process.execPath);
+const configPaths = [
+    path.join(exeDir, 'sitrep-config.json'),
+    path.join(__dirname, '../client/sitrep-config.json'),
+    path.join(__dirname, 'sitrep-config.json')
+];
+
+let addedConfig = false;
+for (const cfgPath of configPaths) {
+    if (fs.existsSync(cfgPath)) {
+        try {
+            console.log(`Loading config from ${cfgPath}`);
+            const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+            // Map Config to Env Vars if not set
+            // Example: Force local sqlite if running standalone
+            if (!process.env.PORT && cfg.serverPort) process.env.PORT = cfg.serverPort;
+
+            // Allow DB override from config
+            if (cfg.serverDbPath) process.env.DB_PATH = cfg.serverDbPath;
+            if (cfg.serverDbHead) process.env.DB_HOST = cfg.serverDbHost;
+
+            addedConfig = true;
+            break;
+        } catch (e) {
+            console.error("Error reading config", e);
+        }
+    }
+}
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');

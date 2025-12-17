@@ -6,6 +6,8 @@ import { Trash2, UserPlus, Key, Shield, AlertTriangle, Database, Download, Uploa
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 
+import { config } from '../config';
+
 const Admin = () => {
     const { user, roles } = useAuth();
     const { deployments } = useDeployment();
@@ -301,7 +303,7 @@ const Admin = () => {
 
             // Attempt to Sync to Backend
             try {
-                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+                const apiUrl = config.serverUrl;
                 await fetch(`${apiUrl}/v1/admin/keys`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -970,7 +972,7 @@ const Admin = () => {
                                     </pre>
                                 </li>
                                 <li>Ensure the backend server is running.</li>
-                                <li>Base URL for all requests: <code className="text-accent-primary">{import.meta.env.VITE_API_URL || 'http://localhost:3001'}/v1</code></li>
+                                <li>Base URL for all requests: <code className="text-accent-primary">{config.serverUrl}/v1</code></li>
                             </ol>
                         </div>
                     </div>

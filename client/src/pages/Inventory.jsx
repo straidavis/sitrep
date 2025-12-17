@@ -597,10 +597,6 @@ const Inventory = () => {
                     </h1>
                     <p className="page-description">
                         Consolidated inventory for <span className="text-accent-primary font-bold">{currentDeployment?.name}</span>
-                        <span className="ml-2 text-xs text-muted flex items-center gap-1 inline-flex bg-bg-secondary px-2 py-1 rounded">
-                            <AlertTriangle size={10} />
-                            Local Data Only
-                        </span>
                     </p>
                 </div>
                 <div className="flex items-center gap-3 w-full md:w-auto flex-wrap justify-end">

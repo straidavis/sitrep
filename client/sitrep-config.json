@@ -1,0 +1,10 @@
+{
+    "serverUrl": "http://localhost:3001",
+    "authMode": "local",
+    "m365": {
+        "clientId": "ENTER_CLIENT_ID_HERE",
+        "tenantId": "ENTER_TENANT_ID_HERE",
+        "redirectUri": "http://localhost"
+    },
+    "defaultAdmin": "matt.davis@shield.ai"
+}

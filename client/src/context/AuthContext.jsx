@@ -1,11 +1,139 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { db } from '../db/schema';
 import bcrypt from 'bcryptjs';
+import { config } from '../config';
+
+// MSAL Imports
+import { PublicClientApplication, EventType } from "@azure/msal-browser";
+import { MsalProvider, useMsal, useIsAuthenticated } from "@azure/msal-react";
 
 const AuthContext = createContext();
 
 export const useAuth = () => useContext(AuthContext);
 
+// --- MSAL Configuration ---
+// Create instance only if mode is microsoft to avoid errors with empty config
+let msalInstance = null;
+
+if (config.authMode === 'microsoft' && config.m365?.clientId) {
+    msalInstance = new PublicClientApplication({
+        auth: {
+            clientId: config.m365.clientId,
+            authority: `https://login.microsoftonline.com/${config.m365.tenantId}`,
+            redirectUri: config.m365.redirectUri
+        },
+        cache: {
+            cacheLocation: "localStorage",
+            storeAuthStateInCookie: false,
+        }
+    });
+
+    // Initialize
+    if (!msalInstance.getActiveAccount() && msalInstance.getAllAccounts().length > 0) {
+        msalInstance.setActiveAccount(msalInstance.getAllAccounts()[0]);
+    }
+
+    msalInstance.addEventCallback((event) => {
+        if (event.eventType === EventType.LOGIN_SUCCESS && event.payload.account) {
+            const account = event.payload.account;
+            msalInstance.setActiveAccount(account);
+        }
+    });
+}
+
+// --- M365 Provider Component ---
+const M365AuthProviderInner = ({ children }) => {
+    const { instance, accounts, inProgress } = useMsal();
+    const isMsalAuth = useIsAuthenticated();
+    const [user, setUser] = useState(null);
+    const [roles, setRoles] = useState([]);
+    const [accessStatus, setAccessStatus] = useState('Checking');
+    const [loading, setLoading] = useState(true);
+
+    const account = instance.getActiveAccount();
+
+    useEffect(() => {
+        if (inProgress === "none") {
+            setLoading(false);
+        }
+    }, [inProgress]);
+
+    useEffect(() => {
+        if (account) {
+            const email = account.username || account.idTokenClaims?.email || "";
+            // Logic: Default Admin Check
+            const isDefaultAdmin = email.toLowerCase() === (config.defaultAdmin || "").toLowerCase();
+
+            setUser({
+                id: account.localAccountId, // or homeAccountId
+                name: account.name,
+                username: email
+            });
+
+            // Role Logic
+            // In a real app, you might sync M365 user to local DB to fetch stored roles.
+            // Here we use the Default Admin config + maybe DB?
+            // For now: Plain M365 + Config Admin.
+            if (isDefaultAdmin) {
+                setRoles(['Sitrep.Admin', 'Sitrep.Editor']);
+            } else {
+                setRoles(['Sitrep.Editor']); // Default generic access? Or 'Viewer'?
+                // If we want detailed roles, we'd query DB here:
+                // db.users.where('email').equals(email).first().then(...)
+            }
+
+            setAccessStatus('Granted');
+        } else {
+            setUser(null);
+            setRoles([]);
+            setAccessStatus('None');
+        }
+    }, [account]);
+
+    const login = async () => {
+        try {
+            await instance.loginPopup({
+                scopes: ["User.Read", "Directory.Read.All"]
+            });
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const logout = () => {
+        instance.logoutPopup();
+    };
+
+    // M365 users don't change passwords here
+    const changePassword = async () => {
+        alert("Please change your password via Microsoft 365 portal.");
+    };
+
+    const canEdit = useMemo(() => {
+        if (!account) return false;
+        return roles.includes('Sitrep.Editor') || roles.includes('Sitrep.Admin');
+    }, [roles, account]);
+
+    const value = {
+        isAuthenticated: !!account,
+        user,
+        roles,
+        accessStatus,
+        canEdit,
+        login,
+        logout,
+        changePassword,
+        loading: loading || inProgress !== 'none' // Wait for MSAL init
+    };
+
+    return (
+        <AuthContext.Provider value={value}>
+            {children}
+        </AuthContext.Provider>
+    );
+};
+
+// --- Local Provider Component (Existing Logic) ---
 const LocalAuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -13,7 +141,7 @@ const LocalAuthProvider = ({ children }) => {
     const [accessStatus, setAccessStatus] = useState('Checking');
     const [loading, setLoading] = useState(true);
 
-    // Initial Session Check (Simple persistence via localStorage)
+    // Initial Session Check
     useEffect(() => {
         const checkSession = async () => {
             const storedUserId = localStorage.getItem('sitrep_userId');
@@ -23,7 +151,7 @@ const LocalAuthProvider = ({ children }) => {
                     if (dbUser) {
                         setUser({
                             id: dbUser.id,
-                            name: dbUser.email.split('@')[0], // Simple name derivation
+                            name: dbUser.email.split('@')[0],
                             username: dbUser.email,
                             mustChangePassword: dbUser.mustChangePassword
                         });
@@ -50,11 +178,9 @@ const LocalAuthProvider = ({ children }) => {
         try {
             const dbUser = await db.users.where('email').equals(email).first();
             if (!dbUser) {
-                // Check if it's the very first login ever (bootstrap admin)
                 const userCount = await db.users.count();
                 if (userCount === 0 && email === 'admin' && password === 'admin') {
-                    // Bootstrap Mode
-                    alert("Bootstrap Admin Mode. Please create a real user immediately.");
+                    // Bootstrap
                     setUser({ id: 0, name: 'Bootstrap Admin', username: 'admin', mustChangePassword: false });
                     setRoles(['Sitrep.Admin', 'Sitrep.Editor']);
                     setIsAuthenticated(true);
@@ -64,22 +190,15 @@ const LocalAuthProvider = ({ children }) => {
                 return { success: false, message: 'User not found' };
             }
 
-            // Check Password
             if (dbUser.passwordHash) {
                 const isValid = await bcrypt.compare(password, dbUser.passwordHash);
                 if (!isValid) return { success: false, message: 'Invalid password' };
             } else if (dbUser.tempPassword) {
-                // Legacy or Temp Password (stored plain text temporarily or specialized field)
-                // For security, tempPassword should ideally be hashed too or cleared on use.
-                // Assuming tempPassword is plain text for initial reset flow (bad practice but fits prompt "issue temp passwords").
-                // Better: tempPassword is a hash too. Let's assume input matches tempPassword logic (simplified here to equal).
-                // Actually, let's treat tempPassword as a separate check/field.
                 if (password !== dbUser.tempPassword) return { success: false, message: 'Invalid temporary password' };
             } else {
                 return { success: false, message: 'Account configuration error. Contact admin.' };
             }
 
-            // Success
             localStorage.setItem('sitrep_userId', dbUser.id);
             setUser({
                 id: dbUser.id,
@@ -112,99 +231,20 @@ const LocalAuthProvider = ({ children }) => {
 
     const changePassword = async (newPassword) => {
         if (!user || !user.id) return;
-        try {
-            const salt = await bcrypt.genSalt(10);
-            const hash = await bcrypt.hash(newPassword, salt);
-
-            await db.users.update(user.id, {
-                passwordHash: hash,
-                tempPassword: null, // Clear temp
-                mustChangePassword: false
-            });
-
-            // Update local state
-            setUser(prev => ({ ...prev, mustChangePassword: false }));
-            return true;
-        } catch (e) {
-            console.error("Change password failed", e);
-            throw e;
-        }
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(newPassword, salt);
+        await db.users.update(user.id, {
+            passwordHash: hash,
+            tempPassword: null,
+            mustChangePassword: false
+        });
+        setUser(prev => ({ ...prev, mustChangePassword: false }));
+        return true;
     };
-
-    // No longer needed: User is manually created by Admin now, or self-registered?
-    // Prompt says "manage login through app", implied local DB.
-    // "Request Access" might still be relevant if we allow public registration -> queue -> admin approve.
-    // Keeping requestAccess logic compatible with new schema if needed, or deprecating.
-    // Let's assume Admin adds users directly OR users request access.
-    // For now, let's preserve `requestAccess` but it might be unused if we switch to Admin-only creation.
-    const requestAccess = async (reason, email, name, password) => {
-        // Re-purposed: Registration Request
-        // Implementation deferred as prompt implies Admin issues passwords.
-    };
-
-    const canEdit = useMemo(() => {
-        if (!isAuthenticated) return false;
-        if (accessStatus !== 'Granted') return false;
-        // Enforce password change before editing
-        if (user?.mustChangePassword) return false;
-        return roles.includes('Sitrep.Editor') || roles.includes('Sitrep.Admin');
-    }, [roles, isAuthenticated, accessStatus, user]);
 
     const value = {
-        isAuthenticated,
-        user,
-        roles,
-        accessStatus,
-        canEdit,
-        login,
-        logout,
-        changePassword,
-        loading
-    };
-
-    if (loading) return <div>Loading session...</div>;
-
-    return (
-        <AuthContext.Provider value={value}>
-            {children}
-        </AuthContext.Provider>
-    );
-};
-
-// Mock Auth Provider for Development
-const MockAuthProvider = ({ children }) => {
-    // Mock State: Start unauthenticated to force login popup
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [user] = useState({
-        name: 'Admin User',
-        username: 'admin@shield.ai',
-        id: 'admin-id-001'
-    });
-    const roles = ['Sitrep.Editor', 'Sitrep.Admin'];
-
-    const login = () => {
-        setIsAuthenticated(true);
-        console.log("Mock Login");
-    };
-
-    const logout = () => {
-        setIsAuthenticated(false);
-        console.log("Mock Logout");
-    };
-
-    const canEdit = useMemo(() => {
-        if (!isAuthenticated) return false;
-        return roles.includes('Sitrep.Editor') || roles.includes('Sitrep.Admin');
-    }, [isAuthenticated, roles]);
-
-    const value = {
-        isAuthenticated,
-        user: isAuthenticated ? user : null,
-        roles,
-        canEdit,
-        login,
-        logout,
-        changePassword: async () => true // Mock success
+        isAuthenticated, user, roles, accessStatus, canEdit: isAuthenticated && !user?.mustChangePassword,
+        login, logout, changePassword, loading
     };
 
     return (
@@ -214,38 +254,19 @@ const MockAuthProvider = ({ children }) => {
     );
 };
 
-// Import config
-import { config } from '../config';
-
-// ... (Rest of file)
-
+// --- Main AuthProvider Wrapper ---
 export const AuthProvider = ({ children }) => {
-    const useMock = import.meta.env.VITE_USE_MOCK_AUTH === 'true';
-
-    // Priority: Mock -> Config
-    if (useMock) {
-        return <MockAuthProvider>{children}</MockAuthProvider>;
-    }
+    // If config says microsoft, wrap in MsalProvider -> M365AuthProviderInner
+    // Else LocalAuthProvider
 
     if (config.authMode === 'microsoft') {
+        if (!msalInstance) {
+            return <div className="p-8 text-error">MSAL Configuration Missing. Check sitrep-config.json.</div>;
+        }
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center bg-bg-primary text-text-primary">
-                <div className="card max-w-md p-8 border-error/50 bg-error/5">
-                    <h1 className="text-xl font-bold text-error mb-4">Microsoft 365 Authentication</h1>
-                    <p className="mb-4">
-                        The application is configured to use Microsoft 365, but the MSAL provider is not currently active.
-                    </p>
-                    <p className="text-sm text-muted">
-                        To enable this, ensure you have the correct Azure Client IDs in <code>src/config.js</code> and restore the MSAL implementation in <code>AuthContext.jsx</code>.
-                    </p>
-                    <button
-                        className="btn btn-secondary mt-6"
-                        onClick={() => window.location.reload()}
-                    >
-                        Retry
-                    </button>
-                </div>
-            </div>
+            <MsalProvider instance={msalInstance}>
+                <M365AuthProviderInner>{children}</M365AuthProviderInner>
+            </MsalProvider>
         );
     }
 
