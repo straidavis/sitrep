@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { Plus, Search, Filter, Edit, Trash2, Download, Upload, Eye } from 'lucide-react';
 import Modal from '../components/Modal';
 import FlightForm from '../components/FlightForm';
@@ -26,7 +27,15 @@ const Flights = () => {
         endDate: ''
     });
 
-    const { selectedDeploymentIds } = useDeployment();
+    const { selectedDeploymentIds, deployments } = useDeployment();
+
+    // Import State
+    const [importModalOpen, setImportModalOpen] = useState(false);
+    const [fileToImport, setFileToImport] = useState(null);
+    const [parsedFlights, setParsedFlights] = useState([]);
+    const [targetDeploymentId, setTargetDeploymentId] = useState('');
+    const [importing, setImporting] = useState(false);
+    const fileInputRef = useRef(null);
 
     const [showModal, setShowModal] = useState(false);
     const [editingFlight, setEditingFlight] = useState(null);
@@ -126,6 +135,185 @@ const Flights = () => {
         }
     };
 
+
+
+    // --- Import Handlers ---
+
+    const handleFileChange = (e) => {
+        if (e.target.files && e.target.files[0]) {
+            handleFile(e.target.files[0]);
+        }
+    };
+
+    const handleFile = (file) => {
+        setFileToImport(file);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                // Get raw data with header:1 to map columns manually
+                const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+                if (jsonData.length < 2) {
+                    alert('File appears empty or missing headers');
+                    return;
+                }
+
+                // Find Header Row (look for specific columns)
+                let headerRowIdx = -1;
+                for (let i = 0; i < Math.min(jsonData.length, 10); i++) {
+                    const row = jsonData[i];
+                    if (!row) continue;
+                    const rowStr = row.map(c => String(c).toLowerCase()).join(' ');
+                    if (rowStr.includes('date') && rowStr.includes('status')) {
+                        headerRowIdx = i;
+                        break;
+                    }
+                }
+
+                if (headerRowIdx === -1) {
+                    alert('Could not find header row (looking for "Date" and "Status")');
+                    return;
+                }
+
+                const headers = jsonData[headerRowIdx].map(h => String(h).trim().toLowerCase());
+                const rows = jsonData.slice(headerRowIdx + 1);
+
+                const getIdx = (name) => headers.findIndex(h => h.includes(name));
+
+                // Column Sigs
+                const colDate = getIdx('date'); // 0
+                const colStatus = getIdx('status'); // 1
+
+                if (colDate === -1 || colStatus === -1) {
+                    alert('Critical columns missing. Found: ' + headers.join(', '));
+                    return;
+                }
+
+                const colMission = getIdx('mission #') !== -1 ? getIdx('mission #') : getIdx('mission');
+                const colAircraft = getIdx('aircraft');
+                const colSched = getIdx('scheduled');
+                const colLaunch = getIdx('launch time');
+                const colRecovery = getIdx('recovery');
+                const colHours = getIdx('hours');
+                const colReason = getIdx('reason');
+                const colWeather = getIdx('weather');
+                const colWinds = getIdx('winds');
+                const colOat = getIdx('oat');
+                const colRisk = getIdx('risk');
+                const colRiskReason = getIdx('risk'); // Reason for elevated risk usually next to risk level?
+                // Actually let's just look for "reason for risk"
+                const colRiskReasonExplicit = headers.findIndex(h => h.includes('risk') && h.includes('reason'));
+                const colNotes = getIdx('notes');
+                const colPayload1 = getIdx('payload 1');
+                const colPayload2 = getIdx('payload 2');
+                const colPayload3 = getIdx('payload 3');
+
+                const mapped = rows.map((row, i) => {
+                    // Skip empty rows
+                    if (!row[colDate] && !row[colMission]) return null;
+
+                    // Helper for Excel Date/Time
+                    const parseDate = (val) => {
+                        if (!val) return '';
+                        if (typeof val === 'number') {
+                            // Excel serial date
+                            const date = new Date((val - 25569) * 86400 * 1000);
+                            return date.toISOString().split('T')[0];
+                        }
+                        return val; // Assume string YYYY-MM-DD
+                    };
+
+                    const parseTime = (val) => {
+                        if (val == null) return '';
+                        if (typeof val === 'number') {
+                            // Fraction of day
+                            const totalSeconds = Math.round(val * 86400);
+                            const hours = Math.floor(totalSeconds / 3600);
+                            const minutes = Math.floor((totalSeconds % 3600) / 60);
+                            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+                        }
+                        return String(val).trim();
+                    };
+
+                    return {
+                        id: `import-${i}`,
+                        date: parseDate(row[colDate]),
+                        status: row[colStatus] || 'Complete',
+                        missionNumber: row[colMission] || '',
+                        aircraftNumber: row[colAircraft] || '',
+                        scheduledLaunchTime: parseTime(row[colSched]),
+                        launchTime: parseTime(row[colLaunch]),
+                        recoveryTime: parseTime(row[colRecovery]),
+                        hours: row[colHours] ? Number(row[colHours]) : 0,
+                        reasonForDelay: row[colReason] || '',
+                        weather: row[colWeather] || '',
+                        winds: row[colWinds] || '',
+                        oat: row[colOat] || '',
+                        riskLevel: row[colRisk] || 'Low',
+                        reasonForRisk: colRiskReasonExplicit !== -1 ? row[colRiskReasonExplicit] : '',
+                        notes: row[colNotes] || '',
+                        payload1: row[colPayload1] || '',
+                        payload2: row[colPayload2] || '',
+                        payload3: row[colPayload3] || '',
+                    };
+                }).filter(Boolean);
+
+                if (mapped.length === 0) {
+                    alert('No valid flight records found. Checked ' + rows.length + ' rows.');
+                    return;
+                }
+
+                setParsedFlights(mapped);
+                setImportModalOpen(true);
+
+                // Auto-set deployment if only one selected
+                if (selectedDeploymentIds.length === 1) {
+                    setTargetDeploymentId(selectedDeploymentIds[0]);
+                }
+            } catch (error) {
+                console.error("Parse Error", error);
+                alert('Error parsing file: ' + error.message);
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    const saveImport = async () => {
+        if (!targetDeploymentId) {
+            alert('Please select a target deployment.');
+            return;
+        }
+
+        setImporting(true);
+        try {
+            const flightsToAdd = parsedFlights.map(f => {
+                const { id, ...data } = f; // Remove temp ID
+                return {
+                    ...data,
+                    deploymentId: parseInt(targetDeploymentId),
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+            });
+
+            await Promise.all(flightsToAdd.map(f => addFlight(f)));
+
+            setImportModalOpen(false);
+            setParsedFlights([]);
+            setFileToImport(null);
+            loadFlights();
+        } catch (error) {
+            console.error(error);
+            alert('Failed to save imported flights.');
+        } finally {
+            setImporting(false);
+        }
+    };
+
     const handleDeleteFlight = async (id) => {
         if (!canEdit) return;
         if (!confirm('Are you sure you want to delete this flight?')) return;
@@ -205,10 +393,19 @@ const Flights = () => {
                         Export
                     </button>
                     {canEdit && (
-                        <button className="btn btn-secondary">
-                            <Upload size={18} />
-                            Import
-                        </button>
+                        <>
+                            <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()}>
+                                <Upload size={18} />
+                                Import
+                            </button>
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleFileChange}
+                                className="hidden"
+                                accept=".xlsx, .xls"
+                            />
+                        </>
                     )}
                 </div>
             </div>
@@ -415,6 +612,75 @@ const Flights = () => {
                         setEditingFlight(null);
                     }}
                 />
+            </Modal>
+
+            {/* Import Preview Modal */}
+            <Modal
+                isOpen={importModalOpen}
+                onClose={() => setImportModalOpen(false)}
+                title="Import Flights"
+                size="lg"
+            >
+                <div className="space-y-4">
+                    <div className="bg-bg-tertiary p-3 rounded flex justify-between items-center">
+                        <div>
+                            <span className="font-bold block">{fileToImport?.name}</span>
+                            <span className="text-sm text-muted">{parsedFlights.length} flights found</span>
+                        </div>
+                        <div className="form-group mb-0 w-64">
+                            <select
+                                className="select select-sm w-full"
+                                value={targetDeploymentId}
+                                onChange={(e) => setTargetDeploymentId(e.target.value)}
+                            >
+                                <option value="">Select Target Deployment...</option>
+                                {deployments.map(d => (
+                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto max-h-[60vh]">
+                        <table className="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Mission</th>
+                                    <th>Aircraft</th>
+                                    <th>Status</th>
+                                    <th>Hours</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {parsedFlights.map((f, i) => (
+                                    <tr key={i} className="hover:bg-bg-secondary">
+                                        <td>{f.date}</td>
+                                        <td>{f.missionNumber}</td>
+                                        <td>{f.aircraftNumber}</td>
+                                        <td>
+                                            <span className={`badge badge-sm ${getStatusBadgeClass(f.status)}`}>{f.status}</span>
+                                        </td>
+                                        <td>{f.hours}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="modal-footer flex start-0">
+                        {/* Spacer */}
+                        <div className="flex-1"></div>
+                        <button className="btn btn-ghost" onClick={() => setImportModalOpen(false)}>Cancel</button>
+                        <button
+                            className="btn btn-primary"
+                            onClick={saveImport}
+                            disabled={importing || !targetDeploymentId}
+                        >
+                            {importing ? 'Importing...' : 'Confirm Import'}
+                        </button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );

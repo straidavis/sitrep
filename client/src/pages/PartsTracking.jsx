@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { db } from '../db/schema';
 import { useAuth } from '../context/AuthContext';
 import { useDeployment } from '../context/DeploymentContext';
 import {
-    Package, Plus, Search, Calendar, Truck,
+    Package, Plus, Search, Calendar, Truck, Upload,
     CheckCircle, AlertTriangle, X, Edit, Trash2,
     ChevronDown, ChevronUp, Save, MapPin, Wrench
 } from 'lucide-react';
 import { format } from 'date-fns';
+import Modal from '../components/Modal';
 
 const PartsTracking = () => {
     const { selectedDeploymentIds, deployments } = useDeployment();
@@ -28,6 +30,14 @@ const PartsTracking = () => {
     // Editor State
     const [currentShipment, setCurrentShipment] = useState(null);
     const [shipmentItems, setShipmentItems] = useState([]);
+
+    // Import State (Utilization)
+    const [importModalOpen, setImportModalOpen] = useState(false);
+    const [fileToImport, setFileToImport] = useState(null);
+    const [parsedUtil, setParsedUtil] = useState([]);
+    const [targetDeploymentId, setTargetDeploymentId] = useState('');
+    const [importing, setImporting] = useState(false);
+    const fileInputRef = useRef(null);
 
     // Lookups
     const [inventoryLookup, setInventoryLookup] = useState([]);
@@ -81,7 +91,12 @@ const PartsTracking = () => {
 
     // --- Actions ---
     const handleCreate = () => {
-        setCurrentShipment(null);
+        // Auto-generate UID: SHIP-YYMMDD-XXXX
+        const prefix = `SHIP-${format(new Date(), 'yyMMdd')}`;
+        const random = Math.floor(1000 + Math.random() * 9000);
+        const newUid = `${prefix}-${random}`;
+
+        setCurrentShipment({ uid: newUid });
         setShipmentItems([]);
         setView('edit');
     };
@@ -180,6 +195,165 @@ const PartsTracking = () => {
         setShipmentItems(shipmentItems.filter((_, i) => i !== index));
     };
 
+    // --- Import Handlers (Utilization) ---
+    const handleFileChange = (e) => {
+        if (e.target.files && e.target.files[0]) {
+            handleFile(e.target.files[0]);
+            e.target.value = null; // Reset input
+        }
+    };
+
+    const handleFile = (file) => {
+        setFileToImport(file);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+                // Find Header Row (look for "Part No" or "Part Number" or "P/N")
+                let headerRowIdx = -1;
+                for (let i = 0; i < Math.min(jsonData.length, 25); i++) {
+                    const row = jsonData[i];
+                    if (!row || !Array.isArray(row)) continue;
+                    const rowStr = row.map(c => String(c).toLowerCase()).join(' ');
+
+                    const hasPart = rowStr.includes('part') || rowStr.includes('p/n') || rowStr.includes('item');
+                    const hasDesc = rowStr.includes('desc') || rowStr.includes('title') || rowStr.includes('name');
+
+                    if (hasPart && hasDesc) {
+                        headerRowIdx = i;
+                        break;
+                    }
+                }
+
+                if (headerRowIdx === -1) {
+                    // Debug scan
+                    const scan = jsonData.slice(0, 5).map(r => JSON.stringify(r)).join('\n');
+                    alert(`Could not find header row in first 25 rows.\nLooking for columns with 'Part' and 'Description'.\nFirst 5 rows seen:\n${scan}`);
+                    return;
+                }
+
+                const headers = jsonData[headerRowIdx].map(h => String(h).trim().toLowerCase());
+                const rows = jsonData.slice(headerRowIdx + 1);
+
+                // Helper to match column names flexibly
+                const getIdx = (patterns) => {
+                    if (!Array.isArray(patterns)) patterns = [patterns];
+                    // Find first header that matches ANY pattern
+                    return headers.findIndex(h => patterns.some(p => h.includes(p)));
+                };
+
+                // Column Sigs
+                const colDate = getIdx('date');
+                const colPart = getIdx(['part no', 'part #', 'p/n', 'part number', 'item']);
+                const colDesc = getIdx(['desc', 'title', 'name']);
+                const colSerial = getIdx(['s/n', 'serial']);
+                const colQty = getIdx(['qty', 'quantity', 'count']);
+                const colType = getIdx(['type', 'category']);
+                const colRemarks = getIdx(['remark', 'note', 'comment']);
+
+                if (colPart === -1) {
+                    alert(`Found header row at ${headerRowIdx + 1}, but could not find 'Part Number' column.\nHeaders found: ${headers.join(', ')}`);
+                    return;
+                }
+
+                const mapped = rows.map((row, i) => {
+                    // "Allow for blanks": Use Part Number if present, otherwise placeholder if row has content
+                    let partVal = (row[colPart] !== undefined && row[colPart] !== null) ? String(row[colPart]).trim() : '';
+
+                    if (!partVal) {
+                        // Check if row is essentially empty
+                        if (!Array.isArray(row)) return null;
+                        const hasContent = row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '');
+                        if (!hasContent) return null;
+
+                        // If row has content but no part number, use placeholder
+                        partVal = `UNKNOWN_PART_ROW_${i + 1}`;
+                    }
+
+                    const descVal = colDesc !== -1 ? (row[colDesc] || '') : '';
+
+                    // Helper for Excel Date
+                    const parseDate = (val) => {
+                        if (!val) return new Date().toISOString().split('T')[0];
+                        if (typeof val === 'number') {
+                            const date = new Date((val - 25569) * 86400 * 1000);
+                            return date.toISOString().split('T')[0];
+                        }
+                        return String(val).trim();
+                    };
+
+                    return {
+                        id: `import-${i}`,
+                        date: colDate !== -1 ? parseDate(row[colDate]) : new Date().toISOString().split('T')[0],
+                        partNumber: partVal,
+                        description: descVal,
+                        serialNumber: colSerial !== -1 ? (row[colSerial] || '') : '',
+                        quantity: colQty !== -1 ? (Number(row[colQty]) || 1) : 1,
+                        type: colType !== -1 ? (row[colType] || 'Unscheduled') : 'Unscheduled',
+                        remarks: colRemarks !== -1 ? (row[colRemarks] || '') : ''
+                    };
+                }).filter(Boolean);
+
+
+                if (mapped.length === 0) {
+                    // Diagnostic Alert
+                    const rowSample = rows.length > 0 ? JSON.stringify(rows[0]) : "No rows";
+                    const valSample = (rows.length > 0 && colPart > -1) ? rows[0][colPart] : "N/A";
+                    alert(`Debug: No records parsed.\nHeaders: ${headers.join(', ')}\nPart Col Index: ${colPart} (${headers[colPart]})\nFirst Row Sample: ${rowSample}\nValue at Part Col: ${valSample}`);
+                    return;
+                }
+
+                setParsedUtil(mapped);
+                setImportModalOpen(true);
+
+                if (currentDeploymentId) {
+                    setTargetDeploymentId(currentDeploymentId);
+                }
+
+            } catch (error) {
+                console.error("Parse Error", error);
+                alert(`Error parsing file: ${error.message}`);
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    const saveImport = async () => {
+        if (!targetDeploymentId) {
+            alert('Please select a target deployment.');
+            return;
+        }
+
+        setImporting(true);
+        try {
+            const itemsToAdd = parsedUtil.map(u => {
+                const { id, ...data } = u;
+                return {
+                    ...data,
+                    deploymentId: parseInt(targetDeploymentId),
+                    createdAt: new Date().toISOString()
+                };
+            });
+
+            await db.partsUtilization.bulkAdd(itemsToAdd);
+
+            setImportModalOpen(false);
+            setParsedUtil([]);
+            setFileToImport(null);
+            loadData();
+        } catch (error) {
+            console.error(error);
+            alert('Failed to save imported utilization records.');
+        } finally {
+            setImporting(false);
+        }
+    };
+
     // --- Renderers ---
 
     const renderList = () => (
@@ -208,7 +382,7 @@ const PartsTracking = () => {
                                 <td>{s.orderDate}</td>
                                 <td>
                                     <span className={`badge ${s.status.includes('Received') ? 'badge-success' :
-                                            s.status === 'Shipped' ? 'badge-info' : 'badge-warning'
+                                        s.status === 'Shipped' ? 'badge-info' : 'badge-warning'
                                         }`}>
                                         {s.status}
                                     </span>
@@ -242,7 +416,7 @@ const PartsTracking = () => {
     const renderEditor = () => (
         <div className="card">
             <div className="card-header flex justify-between items-center">
-                <h3 className="card-title">{currentShipment ? 'Edit Shipment' : 'New Shipment'}</h3>
+                <h3 className="card-title">{currentShipment?.id ? 'Edit Shipment' : 'New Shipment'}</h3>
                 <button className="btn btn-ghost btn-sm" onClick={handleBack}>Cancel</button>
             </div>
             <div className="card-body">
@@ -333,22 +507,56 @@ const PartsTracking = () => {
         </div>
     );
 
+    const [filterDeploymentId, setFilterDeploymentId] = useState('');
+
     // --- Render Utilization ---
     const renderUtilization = () => {
-        // Filter: If active deployment, show only that. If global, show all.
-        const filteredUtil = activeTab === 'utilization' ? utilization.filter(u => {
-            if (currentDeploymentId) return u.deploymentId === currentDeploymentId;
-            return true;
-        }) : [];
+        // Base list from state (already filtered by global context if set)
+        let displayedUtil = activeTab === 'utilization' ? utilization : [];
+
+        // Apply local filter if set (and valid)
+        if (filterDeploymentId && !currentDeploymentId) {
+            displayedUtil = displayedUtil.filter(u => u.deploymentId === parseInt(filterDeploymentId));
+        }
 
         return (
             <div className="card shadow-lg">
-                <div className="card-header flex justify-between items-center bg-bg-secondary/20">
+                <div className="card-header flex flex-col md:flex-row justify-between items-center bg-bg-secondary/20 gap-4">
                     <h3 className="card-title flex items-center gap-2">
                         <Wrench size={18} />
                         Utilization History
                     </h3>
-                    {!currentDeploymentId && <span className="badge badge-ghost">All Deployments</span>}
+
+                    <div className="flex gap-2">
+                        <button className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()}>
+                            <Upload size={16} /> Import
+                        </button>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleFileChange}
+                            className="hidden"
+                            accept=".xlsx, .xls"
+                        />
+
+                        {!currentDeploymentId ? (
+                            <div className="flex items-center gap-2 w-full md:w-auto">
+                                <span className="text-sm text-muted whitespace-nowrap">Filter by:</span>
+                                <select
+                                    className="select select-sm select-bordered w-full md:w-48"
+                                    value={filterDeploymentId}
+                                    onChange={e => setFilterDeploymentId(e.target.value)}
+                                >
+                                    <option value="">All Deployments</option>
+                                    {deployments.map(d => (
+                                        <option key={d.id} value={d.id}>{d.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        ) : (
+                            <span className="badge badge-ghost">Scoped to {currentDeployment?.name}</span>
+                        )}
+                    </div>
                 </div>
                 <div className="card-body p-0">
                     <div className="table-container">
@@ -365,7 +573,7 @@ const PartsTracking = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredUtil.map(u => {
+                                {displayedUtil.map(u => {
                                     const depName = deployments.find(d => d.id === u.deploymentId)?.name || 'Unknown';
                                     return (
                                         <tr key={u.id} className="hover:bg-bg-tertiary/50">
@@ -383,7 +591,7 @@ const PartsTracking = () => {
                                         </tr>
                                     );
                                 })}
-                                {filteredUtil.length === 0 && (
+                                {displayedUtil.length === 0 && (
                                     <tr>
                                         <td colSpan={7} className="text-center py-8 text-muted">No utilization records found.</td>
                                     </tr>
@@ -432,6 +640,72 @@ const PartsTracking = () => {
             )}
 
             {activeTab === 'utilization' && renderUtilization()}
+
+            {/* Import Modal */}
+            <Modal
+                isOpen={importModalOpen}
+                onClose={() => setImportModalOpen(false)}
+                title="Import Utilization"
+                size="lg"
+            >
+                <div className="space-y-4">
+                    <div className="bg-bg-tertiary p-3 rounded flex justify-between items-center">
+                        <div>
+                            <span className="font-bold block">{fileToImport?.name}</span>
+                            <span className="text-sm text-muted">{parsedUtil.length} records found</span>
+                        </div>
+                        <div className="form-group mb-0 w-64">
+                            <select
+                                className="select select-sm w-full"
+                                value={targetDeploymentId}
+                                onChange={(e) => setTargetDeploymentId(e.target.value)}
+                            >
+                                <option value="">Select Target Deployment...</option>
+                                {deployments.map(d => (
+                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto max-h-[60vh]">
+                        <table className="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Part No</th>
+                                    <th>Description</th>
+                                    <th>Qty</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {parsedUtil.map((r, i) => (
+                                    <tr key={i}>
+                                        <td>{r.date}</td>
+                                        <td className="font-mono text-xs">{r.partNumber}</td>
+                                        <td className="text-xs">{r.description}</td>
+                                        <td>{r.quantity}</td>
+                                        <td>{r.type}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="modal-footer flex start-0">
+                        <div className="flex-1"></div>
+                        <button className="btn btn-ghost" onClick={() => setImportModalOpen(false)}>Cancel</button>
+                        <button
+                            className="btn btn-primary"
+                            onClick={saveImport}
+                            disabled={importing || !targetDeploymentId}
+                        >
+                            {importing ? 'Importing...' : 'Confirm Import'}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

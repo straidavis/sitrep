@@ -365,58 +365,98 @@ const Admin = () => {
         const reader = new FileReader();
         reader.onload = async (evt) => {
             try {
-                const bstr = evt.target.result;
-                const wb = XLSX.read(bstr, { type: 'binary' });
-                const wsname = wb.SheetNames[0];
-                const ws = wb.Sheets[wsname];
-                const data = XLSX.utils.sheet_to_json(ws);
+                const bstr = new Uint8Array(evt.target.result);
+                const wb = XLSX.read(bstr, { type: 'array' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-                // Expected Headers: Date, Mission Number, Aircraft, Flight Hours, Cancellation Criteria
-                // We map them to DB schema
-                let count = 0;
-                await db.transaction('rw', db.flights, async () => {
-                    for (const row of data) {
-                        // Basic validation/mapping
-                        if (row['Date'] && row['Mission Number']) {
+                // Find Header (Flights)
+                let headerIdx = -1;
+                for (let i = 0; i < Math.min(jsonData.length, 25); i++) {
+                    const r = jsonData[i];
+                    if (!Array.isArray(r)) continue;
+                    const s = r.map(c => String(c).toLowerCase()).join(' ');
+                    if (s.includes('date') && (s.includes('mission') || s.includes('msn') || s.includes('aircraft'))) {
+                        headerIdx = i;
+                        break;
+                    }
+                }
 
-                            // Cancellation Logic
-                            const cancelVal = row['Cancellation Criteria'] || row['Cancellation'];
-                            let status = 'Complete';
-                            let reason = '';
+                if (headerIdx === -1) {
+                    alert('Could not find Flight data header (Date, Mission, Aircraft...) in first 25 rows.');
+                    return;
+                }
 
-                            // Check if cancellation is valid (not blank, N/A, etc)
-                            const isCancelled = cancelVal && !['', 'n/a', 'na', 'none', '-', 'null'].includes(String(cancelVal).trim().toLowerCase());
+                const headers = jsonData[headerIdx].map(h => String(h).trim().toLowerCase());
+                const rows = jsonData.slice(headerIdx + 1);
 
-                            if (isCancelled) {
-                                status = 'CNX';
-                                // "if the cancelation criteria does not meet the existing criteria, consider it 'other'"
-                                // Since we don't have a hardcoded list of criteria, we just save the value.
-                                // If strict mapping is needed, we would normalize here.
-                                reason = String(cancelVal).trim();
-                            }
+                const getIdx = (patterns) => {
+                    if (!Array.isArray(patterns)) patterns = [patterns];
+                    return headers.findIndex(h => patterns.some(p => h.includes(p)));
+                };
 
-                            await db.flights.add({
-                                deploymentId: parseInt(selectedImportDeployment),
-                                date: row['Date'], // Ensure formatting?
-                                missionNumber: String(row['Mission Number']),
-                                aircraftNumber: String(row['Aircraft'] || ''),
-                                flightHours: parseFloat(row['Flight Hours'] || 0),
-                                status: status,
-                                reasonForDelay: reason,
-                                createdAt: new Date().toISOString()
-                            });
-                            count++;
+                const colDate = getIdx('date');
+                const colMsn = getIdx(['mission', 'msn']);
+                const colTail = getIdx(['aircraft', 'tail']);
+                const colHrs = getIdx(['hours', 'hrs', 'time']);
+                const colCancel = getIdx(['cancel', 'status', 'remark', 'code']);
+
+                if (colDate === -1 || colMsn === -1) {
+                    alert(`Found header row but missing Date or Mission column. Found: ${headers.join(', ')}`);
+                    return;
+                }
+
+                const items = rows.map((row, i) => {
+                    if (!row[colDate] && !row[colMsn]) return null;
+
+                    // Parse Date helper
+                    const parseDate = (val) => {
+                        if (!val) return new Date().toISOString().split('T')[0];
+                        if (typeof val === 'number') {
+                            return new Date((val - 25569) * 86400 * 1000).toISOString().split('T')[0];
+                        }
+                        return String(val).trim();
+                    };
+
+                    const cancelVal = colCancel !== -1 ? row[colCancel] : null;
+                    let status = 'Complete';
+                    let reason = '';
+
+                    if (cancelVal) {
+                        const s = String(cancelVal).trim().toLowerCase();
+                        if (!['', 'n/a', 'na', '-', 'null', 'none'].includes(s)) {
+                            status = 'CNX';
+                            reason = String(cancelVal).trim();
                         }
                     }
-                });
-                alert(`Imported ${count} flight records.`);
-                e.target.value = null; // Reset file input
+
+                    return {
+                        deploymentId: parseInt(selectedImportDeployment),
+                        date: parseDate(row[colDate]),
+                        missionNumber: String(row[colMsn]),
+                        aircraftNumber: colTail !== -1 ? String(row[colTail] || '') : '',
+                        flightHours: colHrs !== -1 ? (parseFloat(row[colHrs]) || 0) : 0,
+                        status,
+                        reasonForDelay: reason,
+                        createdAt: new Date().toISOString()
+                    };
+                }).filter(Boolean);
+
+                if (items.length === 0) {
+                    alert('No valid flight records found (checked Date/Mission columns).');
+                    return;
+                }
+
+                await db.flights.bulkAdd(items);
+                alert(`Imported ${items.length} flight records.`);
+                e.target.value = null;
+
             } catch (err) {
                 console.error(err);
                 alert("Import failed: " + err.message);
             }
         };
-        reader.readAsBinaryString(file);
+        reader.readAsArrayBuffer(file);
     };
 
     const handleImportParts = async (e) => {
@@ -429,38 +469,93 @@ const Admin = () => {
         const reader = new FileReader();
         reader.onload = async (evt) => {
             try {
-                const bstr = evt.target.result;
-                const wb = XLSX.read(bstr, { type: 'binary' });
-                const wsname = wb.SheetNames[0];
-                const ws = wb.Sheets[wsname];
-                const data = XLSX.utils.sheet_to_json(ws);
+                const bstr = new Uint8Array(evt.target.result);
+                const wb = XLSX.read(bstr, { type: 'array' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-                // Expected: Date, Part Number, Quantity, Type
-                let count = 0;
-                await db.transaction('rw', db.partsUtilization, async () => {
-                    for (const row of data) {
-                        if (row['Part Number'] && row['Date']) {
-                            await db.partsUtilization.add({
-                                deploymentId: parseInt(selectedImportDeployment),
-                                date: row['Date'],
-                                partNumber: String(row['Part Number']),
-                                quantity: parseInt(row['Quantity'] || 1),
-                                type: row['Type'] || 'Unscheduled',
-                                description: row['Description'] || '',
-                                createdAt: new Date().toISOString()
-                            });
-                            count++;
-                        }
+                // Find Header
+                let headerIdx = -1;
+                for (let i = 0; i < Math.min(jsonData.length, 25); i++) {
+                    const r = jsonData[i];
+                    if (!Array.isArray(r)) continue;
+                    const s = r.map(c => String(c).toLowerCase()).join(' ');
+                    const hasPart = s.includes('part') || s.includes('p/n') || s.includes('item');
+                    const hasDesc = s.includes('desc') || s.includes('title') || s.includes('name');
+                    if (hasPart && hasDesc) {
+                        headerIdx = i;
+                        break;
                     }
-                });
-                alert(`Imported ${count} usage records.`);
+                }
+
+                if (headerIdx === -1) {
+                    alert('Could not find Parts header (Part No, Description...) in first 25 rows.');
+                    return;
+                }
+
+                const headers = jsonData[headerIdx].map(h => String(h).trim().toLowerCase());
+                const rows = jsonData.slice(headerIdx + 1);
+
+                const getIdx = (patterns) => {
+                    if (!Array.isArray(patterns)) patterns = [patterns];
+                    return headers.findIndex(h => patterns.some(p => h.includes(p)));
+                };
+
+                const colDate = getIdx('date');
+                const colPart = getIdx(['part no', 'part #', 'p/n', 'part number', 'item']);
+                const colDesc = getIdx(['desc', 'title', 'name']);
+                const colQty = getIdx(['qty', 'quantity', 'count']);
+                const colType = getIdx(['type', 'category']);
+
+                if (colPart === -1) {
+                    alert(`Found header row but missing Part Number column. Found: ${headers.join(', ')}`);
+                    return;
+                }
+
+                const items = rows.map((row, i) => {
+                    let partVal = (row[colPart] !== undefined && row[colPart] !== null) ? String(row[colPart]).trim() : '';
+
+                    if (!partVal) {
+                        if (!Array.isArray(row)) return null;
+                        const hasContent = row.some(c => c !== null && c !== undefined && String(c).trim() !== '');
+                        if (!hasContent) return null;
+                        partVal = `UNKNOWN_PART_ROW_${i + 1}`;
+                    }
+
+                    const parseDate = (val) => {
+                        if (!val) return new Date().toISOString().split('T')[0];
+                        if (typeof val === 'number') {
+                            return new Date((val - 25569) * 86400 * 1000).toISOString().split('T')[0];
+                        }
+                        return String(val).trim();
+                    };
+
+                    return {
+                        deploymentId: parseInt(selectedImportDeployment),
+                        date: colDate !== -1 ? parseDate(row[colDate]) : new Date().toISOString().split('T')[0],
+                        partNumber: partVal,
+                        quantity: colQty !== -1 ? (parseInt(row[colQty]) || 1) : 1,
+                        type: colType !== -1 ? (row[colType] || 'Unscheduled') : 'Unscheduled',
+                        description: colDesc !== -1 ? (row[colDesc] || '') : '',
+                        createdAt: new Date().toISOString()
+                    };
+                }).filter(Boolean);
+
+                if (items.length === 0) {
+                    alert('No valid parts usage records found.');
+                    return;
+                }
+
+                await db.partsUtilization.bulkAdd(items);
+                alert(`Imported ${items.length} usage records.`);
                 e.target.value = null;
+
             } catch (err) {
                 console.error(err);
                 alert("Import failed: " + err.message);
             }
         };
-        reader.readAsBinaryString(file);
+        reader.readAsArrayBuffer(file);
     };
 
     const handleDeleteKey = async (id) => {
@@ -836,7 +931,7 @@ const Admin = () => {
                                         value={selectedImportDeployment}
                                     >
                                         <option value="">Select Target Deployment...</option>
-                                        {deployments.concat(loadedDeployments?.filter(d => d.status === 'Completed') || []).map(d => (
+                                        {deployments.map(d => (
                                             <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
                                         ))}
                                     </select>

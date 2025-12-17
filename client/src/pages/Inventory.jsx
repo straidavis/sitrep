@@ -385,38 +385,41 @@ const Inventory = () => {
 
                     if (qtyReceived <= 0) continue;
 
-                    // A. Prioritize filling "Kit Items" deficits
+                    // A. Check for Kit Items first
                     // Find all kit items with matching Part Number
                     const matchingKitItems = kitItemsAll.filter(ki =>
                         String(ki.partNumber || '').trim().toLowerCase() === String(sItem.partNumber || '').trim().toLowerCase()
                     );
 
-                    for (const kItem of matchingKitItems) {
-                        if (qtyReceived <= 0) break;
+                    let processed = false;
 
-                        const expected = parseInt(kItem.quantity) || 0;
-                        const actual = parseInt(kItem.actualQuantity) || 0;
-                        const missing = Math.max(0, expected - actual);
+                    if (matchingKitItems.length > 0) {
+                        // Priority: Update the first matching kit item (or distribute? usually one match)
+                        // User request: "simply update the quantity" (implies adding to it)
+                        const targetKitItem = matchingKitItems[0];
+                        const currentActual = parseInt(targetKitItem.actualQuantity) || 0;
+                        const newActual = currentActual + qtyReceived;
 
-                        if (missing > 0) {
-                            const take = Math.min(qtyReceived, missing);
-
-                            // Update DB
-                            await db.kitItems.update(kItem.id, { actualQuantity: actual + take });
-
-                            // Update local tracker in case we have multiple matches for same part (rare but possible)
-                            kItem.actualQuantity = actual + take;
-                            qtyReceived -= take;
-                        }
+                        await db.kitItems.update(targetKitItem.id, { actualQuantity: newActual });
+                        processed = true;
                     }
 
-                    // B. Remaining quantity goes to "Additional Items"
-                    if (qtyReceived > 0) {
+                    // B. If not in Kit, check Additional Items (InventoryItems)
+                    if (!processed) {
                         // Check if we already have this item in Additional Items to consolidate
-                        const existingInv = await db.inventoryItems
-                            .where('deploymentId').equals(selectedDeploymentId)
-                            .and(i => String(i.partNumber || '').trim().toLowerCase() === String(sItem.partNumber || '').trim().toLowerCase())
-                            .first();
+                        // Ensure deploymentId is int for query
+                        const depId = parseInt(selectedDeploymentId);
+
+                        // Use filter on the collection/table might be safer if constraints vary, 
+                        // but compound index [deploymentId+partNumber] isn't guaranteed unique/present.
+                        // Let's fetch all for deployment and find in memory to be safe on string matching
+                        const depItems = await db.inventoryItems
+                            .where('deploymentId').equals(depId)
+                            .toArray();
+
+                        const existingInv = depItems.find(i =>
+                            String(i.partNumber || '').trim().toLowerCase() === String(sItem.partNumber || '').trim().toLowerCase()
+                        );
 
                         if (existingInv) {
                             // Consolidate
@@ -427,7 +430,7 @@ const Inventory = () => {
                         } else {
                             // Create New
                             await db.inventoryItems.add({
-                                deploymentId: selectedDeploymentId,
+                                deploymentId: depId,
                                 partNumber: sItem.partNumber,
                                 description: sItem.description,
                                 quantity: qtyReceived,
@@ -482,17 +485,27 @@ const Inventory = () => {
         }
 
         try {
-            await db.transaction('rw', 'partsUtilization', 'inventoryItems', 'kitItems', async () => {
+            await db.transaction('rw', ['partsUtilization', 'inventoryItems', 'kitItems', 'kits'], async () => {
                 const timestamp = new Date().toISOString();
 
                 for (const row of validRows) {
                     const qty = parseInt(row.quantity) || 0;
                     if (qty <= 0) continue;
 
+                    // Parse Part Number / Description
+                    let pNum = row.partNumber;
+                    let desc = '';
+                    if (row.partNumber.includes(' | ')) {
+                        const parts = row.partNumber.split(' | ');
+                        pNum = parts[0].trim();
+                        desc = parts[1].trim();
+                    }
+
                     // 1. Record Utilization
-                    await db.partsUtilization.add({
+                    await db.table('partsUtilization').add({
                         deploymentId: selectedDeploymentId,
-                        partNumber: row.partNumber,
+                        partNumber: pNum,
+                        description: desc,
                         quantity: qty,
                         type: row.type,
                         date: timestamp.split('T')[0],
@@ -503,28 +516,36 @@ const Inventory = () => {
                     // Note: This is an implicit "consumption"
 
                     // Check Additional Inventory first
-                    const invItem = await db.inventoryItems
+                    const invItem = await db.table('inventoryItems')
                         .where('deploymentId').equals(selectedDeploymentId)
-                        .and(i => String(i.partNumber).toLowerCase() === String(row.partNumber).toLowerCase())
+                        .and(i => {
+                            const matchPN = String(i.partNumber).toLowerCase() === String(pNum).toLowerCase();
+                            const matchDesc = desc ? String(i.description || '').toLowerCase() === String(desc).toLowerCase() : true;
+                            return matchPN && matchDesc;
+                        })
                         .first();
 
                     if (invItem) {
                         const newQty = Math.max(0, (parseInt(invItem.quantity) || 0) - qty);
-                        await db.inventoryItems.update(invItem.id, { quantity: newQty });
+                        await db.table('inventoryItems').update(invItem.id, { quantity: newQty });
                         continue; // Consumed
                     }
 
                     // Check Kits (more complex, might have multiple, just take from first available)
-                    const kits = await db.kits.where('deploymentId').equals(selectedDeploymentId).toArray();
+                    const kits = await db.table('kits').where('deploymentId').equals(selectedDeploymentId).toArray();
                     const kitIds = kits.map(k => k.id);
-                    const kItem = await db.kitItems
+                    const kItem = await db.table('kitItems')
                         .where('kitId').anyOf(kitIds)
-                        .and(i => String(i.partNumber).toLowerCase() === String(row.partNumber).toLowerCase())
+                        .and(i => {
+                            const matchPN = String(i.partNumber).toLowerCase() === String(pNum).toLowerCase();
+                            const matchDesc = desc ? String(i.description || '').toLowerCase() === String(desc).toLowerCase() : true;
+                            return matchPN && matchDesc;
+                        })
                         .first();
 
                     if (kItem) {
                         const newActual = Math.max(0, (parseInt(kItem.actualQuantity) || 0) - qty);
-                        await db.kitItems.update(kItem.id, { actualQuantity: newActual });
+                        await db.table('kitItems').update(kItem.id, { actualQuantity: newActual });
                     }
                 }
             });
@@ -695,7 +716,7 @@ const Inventory = () => {
                                         <input
                                             type="text"
                                             className="input input-sm w-full font-mono"
-                                            placeholder="Part Number"
+                                            placeholder="Part Number | Description"
                                             value={row.partNumber}
                                             onChange={(e) => handleUtilChange(row.id, 'partNumber', e.target.value)}
                                             list={`util-part-list-${row.id}`}
@@ -703,10 +724,10 @@ const Inventory = () => {
                                         <datalist id={`util-part-list-${row.id}`}>
                                             {/* Combine Kits and Inventory for options */}
                                             {Array.from(new Set([
-                                                ...ConsolidatedKits.map(k => k.partNumber),
-                                                ...inventoryItems.map(i => i.partNumber)
-                                            ])).filter(Boolean).map((pn, i) => (
-                                                <option key={i} value={pn} />
+                                                ...ConsolidatedKits.map(k => `${k.partNumber} | ${k.description}`),
+                                                ...inventoryItems.map(i => `${i.partNumber} | ${i.description}`)
+                                            ])).filter(Boolean).map((val, i) => (
+                                                <option key={i} value={val} />
                                             ))}
                                         </datalist>
                                     </div>

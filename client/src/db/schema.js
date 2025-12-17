@@ -16,7 +16,7 @@ db.on('versionchange', function (event) {
 });
 
 // Define database schema
-db.version(12).stores({
+db.version(201).stores({
     flights: '++id, date, missionNumber, aircraftNumber, launcher, numberOfLaunches, status, deploymentId, scheduledLaunchTime, launchTime, recoveryTime, createdAt, updatedAt',
     equipment: '++id, date, category, equipment, serialNumber, status, deploymentId, location, software, createdAt, updatedAt',
     deployments: '++id, name, type, startDate, endDate, location, userEmails, createdAt, updatedAt, lastInventoryUpdate', // added lastInventoryUpdate

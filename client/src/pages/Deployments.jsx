@@ -145,8 +145,26 @@ const Deployments = () => {
     };
 
     const calculateDuration = (startDate, endDate) => {
-        const days = differenceInDays(new Date(endDate), new Date(startDate));
-        return days + 1;
+        if (!startDate || !endDate) return '-';
+        try {
+            const result = differenceInDays(new Date(endDate), new Date(startDate));
+            // Check for NaN
+            if (isNaN(result)) return '-';
+            return result + 1;
+        } catch (e) {
+            return '-';
+        }
+    };
+
+    const safeFormat = (dateStr, fmt) => {
+        if (!dateStr) return '-';
+        try {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return '-';
+            return format(d, fmt);
+        } catch (e) {
+            return '-';
+        }
     };
 
 
@@ -294,7 +312,7 @@ const Deployments = () => {
                                 <th>Start Date</th>
                                 <th>End Date</th>
                                 <th>Duration</th>
-
+                                <th>Inventory</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -302,7 +320,7 @@ const Deployments = () => {
                         <tbody>
                             {filteredDeployments.length === 0 ? (
                                 <tr>
-                                    <td colSpan="8" style={{ textAlign: 'center', padding: 'var(--spacing-xl)' }}>
+                                    <td colSpan="9" style={{ textAlign: 'center', padding: 'var(--spacing-xl)' }}>
                                         <p className="text-muted">
                                             {deployments.length === 0
                                                 ? 'No deployments recorded yet.'
@@ -326,10 +344,33 @@ const Deployments = () => {
                                                 <span className="badge badge-info">{deployment.type}</span>
                                             </td>
                                             <td>{deployment.location}</td>
-                                            <td>{format(new Date(deployment.startDate), 'MMM dd, yyyy')}</td>
-                                            <td>{format(new Date(deployment.endDate), 'MMM dd, yyyy')}</td>
+                                            <td>{safeFormat(deployment.startDate, 'MMM dd, yyyy')}</td>
+                                            <td>{safeFormat(deployment.endDate, 'MMM dd, yyyy')}</td>
                                             <td>
                                                 {calculateDuration(deployment.startDate, deployment.endDate)} days
+                                            </td>
+                                            <td>
+                                                {deployment.lastInventoryUpdate ? (
+                                                    <div className="flex flex-col">
+                                                        <span className="text-xs font-semibold">
+                                                            {safeFormat(deployment.lastInventoryUpdate, 'MMM dd')}
+                                                        </span>
+                                                        {(() => {
+                                                            try {
+                                                                const days = differenceInDays(new Date(), new Date(deployment.lastInventoryUpdate));
+                                                                return (
+                                                                    <span className={`text-[10px] ${days > 7 ? 'text-error font-bold' : 'text-success'}`}>
+                                                                        {days} days ago
+                                                                    </span>
+                                                                );
+                                                            } catch (e) {
+                                                                return null;
+                                                            }
+                                                        })()}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-muted text-xs italic">Never</span>
+                                                )}
                                             </td>
 
                                             <td>
@@ -385,7 +426,7 @@ const Deployments = () => {
                     }}
                 />
             </Modal>
-        </div>
+        </div >
     );
 };
 
