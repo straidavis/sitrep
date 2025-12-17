@@ -5,7 +5,7 @@ import { useDeployment } from '../context/DeploymentContext';
 import {
     Package, Plus, Search, Calendar, Truck,
     CheckCircle, AlertTriangle, X, Edit, Trash2,
-    ChevronDown, ChevronUp, Save, MapPin
+    ChevronDown, ChevronUp, Save, MapPin, Wrench
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -19,8 +19,10 @@ const PartsTracking = () => {
 
     // State
     const [shipments, setShipments] = useState([]);
+    const [utilization, setUtilization] = useState([]); // New state for utilization
     const [isLoading, setIsLoading] = useState(true);
     const [view, setView] = useState('list'); // 'list', 'edit', 'create'
+    const [activeTab, setActiveTab] = useState('shipments'); // 'shipments' or 'utilization'
     const [searchQuery, setSearchQuery] = useState('');
 
     // Editor State
@@ -34,15 +36,21 @@ const PartsTracking = () => {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            // Load Shipments (filter by deployment if selected, or load all?)
-            // Usually tracking is deployment specific
+            // Load Shipments
             let q = db.shipments.orderBy('orderDate').reverse();
+            // Load Utilization
+            let u = db.partsUtilization.orderBy('date').reverse();
+
             if (currentDeploymentId) {
                 // Filter by deployment
-                const all = await q.toArray();
-                setShipments(all.filter(s => s.deploymentId === currentDeploymentId));
+                const allShips = await q.toArray();
+                setShipments(allShips.filter(s => s.deploymentId === currentDeploymentId));
+
+                const allUtil = await u.toArray();
+                setUtilization(allUtil.filter(rec => rec.deploymentId === currentDeploymentId));
             } else {
                 setShipments(await q.toArray());
+                setUtilization(await u.toArray());
             }
 
             // Load Inventory for Lookup
@@ -71,22 +79,9 @@ const PartsTracking = () => {
 
     // --- Actions ---
 
+    // --- Actions ---
     const handleCreate = () => {
-        if (!currentDeploymentId) {
-            alert('Please select a single active deployment to create a shipment.');
-            return;
-        }
-
-        const uid = `SHP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-        setCurrentShipment({
-            uid,
-            deploymentId: currentDeploymentId,
-            orderDate: new Date().toISOString().split('T')[0],
-            shipDate: '',
-            hostReceivedDate: '',
-            siteReceivedDate: '',
-            status: 'Ordered'
-        });
+        setCurrentShipment(null);
         setShipmentItems([]);
         setView('edit');
     };
@@ -99,7 +94,7 @@ const PartsTracking = () => {
     };
 
     const handleDelete = async (id) => {
-        if (confirm('Are you sure you want to delete this shipment?')) {
+        if (confirm('Delete this shipment?')) {
             await db.transaction('rw', db.shipments, db.shipmentItems, async () => {
                 await db.shipments.delete(id);
                 await db.shipmentItems.where('shipmentId').equals(id).delete();
@@ -108,93 +103,76 @@ const PartsTracking = () => {
         }
     };
 
-    const handleSave = async () => {
-        if (!currentShipment.uid || !currentShipment.orderDate) {
-            alert("UID and Order Date are required");
-            return;
-        }
+    const handleBack = () => {
+        setView('list');
+        setCurrentShipment(null);
+        setShipmentItems([]);
+    };
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData);
 
         try {
             await db.transaction('rw', db.shipments, db.shipmentItems, async () => {
-                let id = currentShipment.id;
-
-                // Determine Status based on dates
-                let status = 'Ordered';
-                if (currentShipment.shipDate) status = 'Shipped';
-                if (currentShipment.hostReceivedDate) status = 'Received (Host)';
-                if (currentShipment.siteReceivedDate) status = 'Received (Site)';
+                let sId = currentShipment?.id;
 
                 const shipmentData = {
-                    ...currentShipment,
-                    status,
+                    uid: data.uid,
+                    deploymentId: parseInt(data.deploymentId) || (currentDeploymentId || 0),
+                    orderDate: data.orderDate,
+                    status: data.status, // Ordered, Shipped, Received (Host), Received (Site)
                     updatedAt: new Date().toISOString()
                 };
 
-                if (id) {
-                    await db.shipments.update(id, shipmentData);
+                if (sId) {
+                    await db.shipments.update(sId, shipmentData);
                 } else {
                     shipmentData.createdAt = new Date().toISOString();
-                    id = await db.shipments.add(shipmentData);
+                    sId = await db.shipments.add(shipmentData);
                 }
 
-                // Handle Items (Delete all and re-add for simplicity, or diff? Re-add is safer for small lists)
-                // Filter out existing db items for update vs new?
-                // Simplest: Delete existing items for this shipment and add current list
-                // WARN: If we successfully "Received" items, we might need to preserve link.
-                // For now, full replace of items on save is acceptable as long as we keep track of IDs if needed.
-                // But wait, if items have IDs, we should keep them.
-
-                // Strategy: 
-                // 1. Get existing IDs
-                const existing = await db.shipmentItems.where('shipmentId').equals(id).toArray();
-                const existingIds = existing.map(e => e.id);
-                const currentIds = shipmentItems.map(i => i.id).filter(Boolean);
-                const toDelete = existingIds.filter(eid => !currentIds.includes(eid));
-
-                if (toDelete.length > 0) await db.shipmentItems.bulkDelete(toDelete);
+                // Handle Items
+                // Strategy: Delete all existing for this shipment and re-add (simpler for now than diffing)
+                // Note: If preserving 'receivedDate' per item is needed, we'd need smarter diffing.
+                // For now, assuming edit is mostly for initial setup or minor corrections.
+                await db.shipmentItems.where('shipmentId').equals(sId).delete();
 
                 for (const item of shipmentItems) {
-                    const itemData = {
-                        ...item,
-                        shipmentId: id
-                    };
-                    if (item.id) {
-                        await db.shipmentItems.update(item.id, itemData);
-                    } else {
-                        await db.shipmentItems.add(itemData);
-                    }
+                    await db.shipmentItems.add({
+                        shipmentId: sId,
+                        partNumber: item.partNumber,
+                        description: item.description,
+                        quantity: parseInt(item.quantity) || 1,
+                        serialNumber: item.serialNumber || '',
+                        isNewItem: true // Default
+                    });
                 }
             });
-
-            setView('list');
             loadData();
-        } catch (error) {
-            alert('Failed to save: ' + error.message);
+            handleBack();
+        } catch (err) {
+            console.error(err);
+            alert("Failed to save shipment");
         }
     };
 
-    // --- Item Editor ---
+    // Item Form Actions
     const addItem = () => {
-        setShipmentItems([...shipmentItems, {
-            partNumber: '',
-            description: '',
-            quantity: 1,
-            serialNumber: '',
-            isNewItem: false
-        }]);
+        setShipmentItems([...shipmentItems, { partNumber: '', description: '', quantity: 1 }]);
     };
 
-    const updateItem = (index, field, value) => {
+    const updateItem = (index, field, val) => {
         const newItems = [...shipmentItems];
-        newItems[index] = { ...newItems[index], [field]: value };
+        newItems[index] = { ...newItems[index], [field]: val };
 
-        // Auto-fill description if part selected
+        // Auto-fill description from lookup if part number changes
         if (field === 'partNumber') {
-            const found = inventoryLookup.find(i => i.partNumber === value);
-            if (found) {
-                newItems[index].description = found.description;
-            }
+            const match = inventoryLookup.find(i => i.partNumber === val);
+            if (match) newItems[index].description = match.description;
         }
+
         setShipmentItems(newItems);
     };
 
@@ -202,274 +180,212 @@ const PartsTracking = () => {
         setShipmentItems(shipmentItems.filter((_, i) => i !== index));
     };
 
-    // --- Render ---
+    // --- Renderers ---
 
-    const renderList = () => {
-        // Filter by Search Query first
-        const filtered = shipments.filter(s =>
-            s.uid.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (s.status || '').toLowerCase().includes(searchQuery.toLowerCase())
-        );
-
-        // Group shipments
-        const groups = {};
-        if (currentDeploymentId) {
-            groups[currentDeploymentId] = filtered;
-        } else {
-            filtered.forEach(s => {
-                const id = s.deploymentId || 0;
-                if (!groups[id]) groups[id] = [];
-                groups[id].push(s);
-            });
-        }
-
-        return (
-            <div className="space-y-6">
-                {/* Header / Actions */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div className="relative flex-1 w-full md:max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
-                        <input
-                            type="text"
-                            placeholder="Search shipments..."
-                            className="input pl-10 w-full"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                    </div>
-                    <button className="btn btn-primary" onClick={handleCreate}>
-                        <Plus size={18} />
-                        Create Shipment
-                    </button>
-                </div>
-
-                {filtered.length === 0 ? (
-                    <div className="card p-8 text-center text-muted">No shipments found.</div>
-                ) : Object.entries(groups).map(([depId, groupShipments]) => {
-                    const depName = deployments.find(d => d.id == depId)?.name || 'Unknown Deployment';
-                    if (groupShipments.length === 0) return null;
-
-                    return (
-                        <div key={depId} className="card overflow-hidden mb-6 animate-in fade-in">
-                            {!currentDeploymentId && (
-                                <div className="card-header bg-bg-secondary/50 border-b border-border py-2 px-4 font-bold text-accent-primary flex items-center gap-2">
-                                    <MapPin size={16} /> {depName}
-                                </div>
-                            )}
-                            <div className="table-container">
-                                <table className="table">
-                                    <thead>
-                                        <tr>
-                                            <th>Status</th>
-                                            <th>UID</th>
-                                            <th>Order Date</th>
-                                            <th>Ship Date</th>
-                                            <th>Received (Host)</th>
-                                            <th>Received (Site)</th>
-                                            <th className="text-right">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {groupShipments.map(shipment => (
-                                            <tr key={shipment.id} className="hover:bg-bg-secondary/50">
-                                                <td>
-                                                    <span className={`badge ${shipment.status === 'Received (Site)' ? 'badge-success' :
-                                                        shipment.status === 'Ordered' ? 'badge-warning' :
-                                                            'badge-info'
-                                                        }`}>
-                                                        {shipment.status}
-                                                    </span>
-                                                </td>
-                                                <td className="font-mono font-bold">{shipment.uid}</td>
-                                                <td>{shipment.orderDate}</td>
-                                                <td>{shipment.shipDate || '-'}</td>
-                                                <td>{shipment.hostReceivedDate || '-'}</td>
-                                                <td>{shipment.siteReceivedDate || '-'}</td>
-                                                <td className="text-right">
-                                                    <div className="flex justify-end gap-2">
-                                                        <button
-                                                            className="btn-icon p-1 text-muted hover:text-primary"
-                                                            onClick={() => handleEdit(shipment)}
-                                                            title="Edit Shipment"
-                                                        >
-                                                            <Edit size={16} />
-                                                        </button>
-                                                        <button
-                                                            className="btn-icon p-1 text-muted hover:text-error"
-                                                            onClick={() => handleDelete(shipment.id)}
-                                                            title="Delete Shipment"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    );
-                })}
+    const renderList = () => (
+        <div className="card">
+            <div className="card-header flex justify-between items-center">
+                <h3 className="card-title">Shipments</h3>
+                <button className="btn btn-primary btn-sm gap-2" onClick={handleCreate}>
+                    <Plus size={16} /> New Shipment
+                </button>
             </div>
-        );
-    };
+            <div className="table-container">
+                <table className="table">
+                    <thead>
+                        <tr>
+                            <th>UID/Tracking</th>
+                            <th>Order Date</th>
+                            <th>Status</th>
+                            <th>Deployment</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {shipments.map(s => (
+                            <tr key={s.id}>
+                                <td className="font-mono font-bold">{s.uid}</td>
+                                <td>{s.orderDate}</td>
+                                <td>
+                                    <span className={`badge ${s.status.includes('Received') ? 'badge-success' :
+                                            s.status === 'Shipped' ? 'badge-info' : 'badge-warning'
+                                        }`}>
+                                        {s.status}
+                                    </span>
+                                </td>
+                                <td className="text-sm text-muted">
+                                    {deployments.find(d => d.id === s.deploymentId)?.name || '-'}
+                                </td>
+                                <td>
+                                    <div className="flex gap-2">
+                                        <button className="btn btn-sm btn-ghost" onClick={() => handleEdit(s)}>
+                                            <Edit size={16} />
+                                        </button>
+                                        <button className="btn btn-sm btn-ghost text-error" onClick={() => handleDelete(s.id)}>
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                        {shipments.length === 0 && (
+                            <tr>
+                                <td colSpan="5" className="text-center py-8 text-muted">No shipments found.</td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
 
     const renderEditor = () => (
-        <div className="max-w-4xl mx-auto space-y-6">
-            <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold flex items-center gap-2">
-                    <Truck />
-                    {currentShipment.id ? 'Edit Shipment' : 'New Shipment'}
-                </h2>
-                <div className="flex gap-2">
-                    <button className="btn btn-ghost" onClick={() => setView('list')}>Cancel</button>
-                    <button className="btn btn-primary" onClick={handleSave}>
-                        <Save size={18} />
-                        Save Shipment
-                    </button>
-                </div>
+        <div className="card">
+            <div className="card-header flex justify-between items-center">
+                <h3 className="card-title">{currentShipment ? 'Edit Shipment' : 'New Shipment'}</h3>
+                <button className="btn btn-ghost btn-sm" onClick={handleBack}>Cancel</button>
             </div>
+            <div className="card-body">
+                <form onSubmit={handleSave}>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div className="form-control">
+                            <label className="label">UID / Tracking #</label>
+                            <input name="uid" defaultValue={currentShipment?.uid} className="input" required placeholder="e.g. SHIP-001" />
+                        </div>
+                        <div className="form-control">
+                            <label className="label">Order Date</label>
+                            <input type="date" name="orderDate" defaultValue={currentShipment?.orderDate || new Date().toISOString().split('T')[0]} className="input" required />
+                        </div>
+                        <div className="form-control">
+                            <label className="label">Status</label>
+                            <select name="status" defaultValue={currentShipment?.status || 'Ordered'} className="select">
+                                <option>Ordered</option>
+                                <option>Shipped</option>
+                                <option>Received (Host)</option>
+                                <option>Received (Site)</option>
+                            </select>
+                        </div>
+                        <div className="form-control">
+                            <label className="label">Deployment</label>
+                            <select name="deploymentId" defaultValue={currentShipment?.deploymentId || currentDeploymentId || ''} className="select" required>
+                                <option value="">Select Deployment...</option>
+                                {deployments.map(d => (
+                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
 
-            <div className="card">
-                <div className="card-header">
-                    <h3 className="card-title">Shipment Details</h3>
-                </div>
-                <div className="card-body grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2">
-                        <label className="form-label">Deployment</label>
-                        <input
-                            className="input bg-bg-secondary text-muted"
-                            readOnly
-                            value={deployments.find(d => d.id === currentShipment.deploymentId)?.name || 'Unknown'}
-                        />
+                    <div className="divider">Items</div>
+
+                    <div className="space-y-2 mb-6">
+                        {shipmentItems.map((item, idx) => (
+                            <div key={idx} className="flex gap-2 items-end bg-bg-tertiary/30 p-2 rounded">
+                                <div className="form-control flex-1">
+                                    <label className="text-xs mb-1">Part Number</label>
+                                    <div className="relative">
+                                        <input
+                                            className="input input-sm w-full font-mono"
+                                            value={item.partNumber}
+                                            onChange={e => updateItem(idx, 'partNumber', e.target.value)}
+                                            list={`part-list-${idx}`}
+                                            required
+                                        />
+                                        <datalist id={`part-list-${idx}`}>
+                                            {inventoryLookup.map((i, k) => <option key={k} value={i.partNumber} />)}
+                                        </datalist>
+                                    </div>
+                                </div>
+                                <div className="form-control flex-[2]">
+                                    <label className="text-xs mb-1">Description</label>
+                                    <input
+                                        className="input input-sm w-full"
+                                        value={item.description}
+                                        onChange={e => updateItem(idx, 'description', e.target.value)}
+                                    />
+                                </div>
+                                <div className="form-control w-24">
+                                    <label className="text-xs mb-1">Qty</label>
+                                    <input
+                                        type="number"
+                                        className="input input-sm w-full text-center"
+                                        value={item.quantity}
+                                        onChange={e => updateItem(idx, 'quantity', e.target.value)}
+                                        min="1"
+                                    />
+                                </div>
+                                <button type="button" className="btn btn-sm btn-ghost text-error" onClick={() => removeItem(idx)}>
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        ))}
+                        <button type="button" className="btn btn-sm btn-ghost dashed-border w-full" onClick={addItem}>
+                            <Plus size={14} /> Add Item
+                        </button>
                     </div>
-                    <div>
-                        <label className="form-label">Shipment UID</label>
-                        <input
-                            className="input font-mono"
-                            value={currentShipment.uid}
-                            onChange={e => setCurrentShipment({ ...currentShipment, uid: e.target.value })}
-                        />
+
+                    <div className="flex justify-end gap-2">
+                        <button type="button" className="btn btn-secondary" onClick={handleBack}>Cancel</button>
+                        <button type="submit" className="btn btn-primary">Save Shipment</button>
                     </div>
-                    <div>
-                        <label className="form-label">Order Date</label>
-                        <input
-                            type="date"
-                            className="input"
-                            value={currentShipment.orderDate}
-                            onChange={e => setCurrentShipment({ ...currentShipment, orderDate: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="form-label">Shipment Date</label>
-                        <input
-                            type="date"
-                            className="input"
-                            value={currentShipment.shipDate}
-                            onChange={e => setCurrentShipment({ ...currentShipment, shipDate: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="form-label">Received by Host Activity</label>
-                        <input
-                            type="date"
-                            className="input"
-                            value={currentShipment.hostReceivedDate}
-                            onChange={e => setCurrentShipment({ ...currentShipment, hostReceivedDate: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="form-label">Received by Site Lead</label>
-                        <input
-                            type="date"
-                            className="input"
-                            value={currentShipment.siteReceivedDate}
-                            placeholder="Set via receiving process"
-                            readOnly // Usually read-only from here, set via "Receive" action in Inventory? Or editable?
-                            // User spec: "once it is 'added to inventory' via button, it should update the shipment date"
-                            // So maybe keep it editable for manual correction, but generally automatic.
-                            onChange={e => setCurrentShipment({ ...currentShipment, siteReceivedDate: e.target.value })}
-                        />
-                        <p className="text-xs text-muted mt-1">Populated when items are received in Inventory</p>
-                    </div>
-                </div>
+                </form>
             </div>
+        </div>
+    );
 
-            {/* Items */}
-            <div className="card">
-                <div className="card-header flex justify-between items-center">
-                    <h3 className="card-title">Shipment Items</h3>
-                    <button className="btn btn-sm btn-secondary" onClick={addItem}>
-                        <Plus size={16} />
-                        Add Item
-                    </button>
+    // --- Render Utilization ---
+    const renderUtilization = () => {
+        // Filter: If active deployment, show only that. If global, show all.
+        const filteredUtil = activeTab === 'utilization' ? utilization.filter(u => {
+            if (currentDeploymentId) return u.deploymentId === currentDeploymentId;
+            return true;
+        }) : [];
+
+        return (
+            <div className="card shadow-lg">
+                <div className="card-header flex justify-between items-center bg-bg-secondary/20">
+                    <h3 className="card-title flex items-center gap-2">
+                        <Wrench size={18} />
+                        Utilization History
+                    </h3>
+                    {!currentDeploymentId && <span className="badge badge-ghost">All Deployments</span>}
                 </div>
                 <div className="card-body p-0">
-                    <div className="table-container border-0 rounded-none">
+                    <div className="table-container">
                         <table className="table">
                             <thead>
                                 <tr>
-                                    <th className="w-1/4">Part Number</th>
-                                    <th className="w-1/3">Description</th>
-                                    <th className="w-24">Qty</th>
-                                    <th className="w-1/4">Serial No.</th>
-                                    <th className="w-12"></th>
+                                    <th>Date</th>
+                                    {!currentDeploymentId && <th>Deployment</th>}
+                                    <th>Part Number</th>
+                                    <th>Description</th>
+                                    <th>Qty</th>
+                                    <th>Type</th>
+                                    <th>Logged At</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {shipmentItems.map((item, idx) => (
-                                    <tr key={idx}>
-                                        <td>
-                                            <input
-                                                list={`parts-${idx}`}
-                                                className="input input-sm w-full font-mono"
-                                                value={item.partNumber}
-                                                onChange={e => updateItem(idx, 'partNumber', e.target.value)}
-                                                placeholder="Search or Enter PN"
-                                            />
-                                            <datalist id={`parts-${idx}`}>
-                                                {inventoryLookup.map((i, k) => (
-                                                    <option key={k} value={i.partNumber}>{i.description}</option>
-                                                ))}
-                                            </datalist>
-                                        </td>
-                                        <td>
-                                            <input
-                                                className="input input-sm w-full"
-                                                value={item.description}
-                                                onChange={e => updateItem(idx, 'description', e.target.value)}
-                                            />
-                                        </td>
-                                        <td>
-                                            <input
-                                                type="number"
-                                                className="input input-sm w-full text-center"
-                                                value={item.quantity}
-                                                onChange={e => updateItem(idx, 'quantity', parseInt(e.target.value) || 0)}
-                                            />
-                                        </td>
-                                        <td>
-                                            <input
-                                                className="input input-sm w-full"
-                                                value={item.serialNumber || ''}
-                                                onChange={e => updateItem(idx, 'serialNumber', e.target.value)}
-                                                placeholder="N/A"
-                                            />
-                                        </td>
-                                        <td className="text-right">
-                                            <button
-                                                className="btn-icon text-error hover:bg-error/10 rounded"
-                                                onClick={() => removeItem(idx)}
-                                            >
-                                                <X size={16} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {shipmentItems.length === 0 && (
+                                {filteredUtil.map(u => {
+                                    const depName = deployments.find(d => d.id === u.deploymentId)?.name || 'Unknown';
+                                    return (
+                                        <tr key={u.id} className="hover:bg-bg-tertiary/50">
+                                            <td className="font-mono">{u.date}</td>
+                                            {!currentDeploymentId && <td className="text-muted text-sm">{depName}</td>}
+                                            <td className="font-bold">{u.partNumber}</td>
+                                            <td className="text-muted">{u.description || '-'}</td>
+                                            <td className="font-mono">{u.quantity}</td>
+                                            <td>
+                                                <span className={`badge ${u.type === 'Unscheduled' ? 'badge-warning' : 'badge-info'}`}>
+                                                    {u.type}
+                                                </span>
+                                            </td>
+                                            <td className="text-xs text-muted">{new Date(u.createdAt).toLocaleString()}</td>
+                                        </tr>
+                                    );
+                                })}
+                                {filteredUtil.length === 0 && (
                                     <tr>
-                                        <td colSpan={5} className="text-center py-4 text-muted">No items in this shipment.</td>
+                                        <td colSpan={7} className="text-center py-8 text-muted">No utilization records found.</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -477,20 +393,45 @@ const PartsTracking = () => {
                     </div>
                 </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     return (
-        <div className="animate-in fade-in duration-500">
-            <div className="page-header">
+        <div className="animate-in fade-in duration-500 max-w-7xl mx-auto pb-24">
+            <div className="page-header mb-6">
                 <div>
-                    <h1 className="page-title">Parts Tracking</h1>
-                    <p className="page-description">Manage incoming shipments and order requests.</p>
+                    <h1 className="page-title">Parts Management</h1>
+                    <p className="page-description">Manage incoming shipments and track parts utilization.</p>
                 </div>
             </div>
 
-            {view === 'list' && renderList()}
-            {view === 'edit' && renderEditor()}
+            {/* Tabs */}
+            <div className="tabs tabs-boxed mb-6 bg-transparent p-0 gap-2">
+                <button
+                    className={`tab tab-lg ${activeTab === 'shipments' ? 'tab-active btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setActiveTab('shipments')}
+                >
+                    <Truck size={16} className="mr-2" />
+                    Shipments & Orders
+                </button>
+                <button
+                    className={`tab tab-lg ${activeTab === 'utilization' ? 'tab-active btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setActiveTab('utilization')}
+                >
+                    <Wrench size={16} className="mr-2" />
+                    Utilization History
+                </button>
+                {/* Editor is ephemeral, overlays list if active */}
+            </div>
+
+            {activeTab === 'shipments' && (
+                <>
+                    {view === 'list' && renderList()}
+                    {view === 'edit' && renderEditor()}
+                </>
+            )}
+
+            {activeTab === 'utilization' && renderUtilization()}
         </div>
     );
 };

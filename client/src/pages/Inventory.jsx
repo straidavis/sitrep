@@ -3,13 +3,14 @@ import { createPortal } from 'react-dom';
 import { db } from '../db/schema';
 import { useDeployment } from '../context/DeploymentContext';
 import { useAuth } from '../context/AuthContext';
+
+import * as XLSX from 'xlsx';
+import { format, differenceInDays } from 'date-fns';
 import {
     Save, Plus, Trash2, AlertTriangle, Package, Search,
     CheckCircle2, Download, Pencil, Check, Lock, Unlock,
-    Truck, Archive, X
+    Truck, Archive, X, LayoutList, Clock, Wrench, Calendar
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
-import { format } from 'date-fns';
 
 const Inventory = () => {
     const { canEdit } = useAuth();
@@ -44,11 +45,22 @@ const Inventory = () => {
     const [invEdits, setInvEdits] = useState({}); // { id: { ...updates } }
     const [newItems, setNewItems] = useState([]); // [{ tempId, partNumber, description, quantity }]
 
+    // Parts Utilization State
+    const [utilizationRows, setUtilizationRows] = useState([
+        { id: Date.now(), partNumber: '', quantity: 1, type: 'Unscheduled' }
+    ]);
+    const [utilSuccess, setUtilSuccess] = useState(false);
+
     const selectedDeploymentId = (selectedDeploymentIds && selectedDeploymentIds.length === 1)
         ? selectedDeploymentIds[0]
         : null;
 
     const currentDeployment = deployments.find(d => d.id === selectedDeploymentId);
+
+    // Inventory Freshness
+    const lastUpdateDate = currentDeployment?.lastInventoryUpdate;
+    const daysSinceLastUpdate = lastUpdateDate ? differenceInDays(new Date(), new Date(lastUpdateDate)) : null;
+    const isInventoryOutdated = !lastUpdateDate || (daysSinceLastUpdate > 7);
 
     useEffect(() => {
         if (selectedDeploymentId) {
@@ -320,6 +332,11 @@ const Inventory = () => {
                 db.inventoryItems.update(parseInt(id), updates)
             );
 
+            // Update Deployment Last Inventory Update Timestamp
+            const deploymentUpdate = db.deployments.update(selectedDeploymentId, {
+                lastInventoryUpdate: new Date().toISOString()
+            });
+
             // 3. Process New Items
             const newPromises = newItems.map(item => {
                 const { tempId, ...data } = item;
@@ -331,7 +348,7 @@ const Inventory = () => {
                 });
             });
 
-            await Promise.all([...kitPromises, ...invPromises, ...newPromises]);
+            await Promise.all([...kitPromises, ...invPromises, ...newPromises, deploymentUpdate]);
             await loadData();
             // Optional: alert('Saved');
         } catch (error) {
@@ -436,6 +453,92 @@ const Inventory = () => {
         }
     };
 
+    // Parts Utilization Handlers
+    const handleAddUtilRow = () => {
+        setUtilizationRows(prev => [
+            ...prev,
+            { id: Date.now(), partNumber: '', quantity: 1, type: 'Unscheduled' }
+        ]);
+    };
+
+    const handleRemoveUtilRow = (id) => {
+        setUtilizationRows(prev => prev.filter(r => r.id !== id));
+    };
+
+    const handleUtilChange = (id, field, value) => {
+        setUtilizationRows(prev => prev.map(r =>
+            r.id === id ? { ...r, [field]: value } : r
+        ));
+    };
+
+    const handleSubmitUtilization = async () => {
+        if (!selectedDeploymentId) return;
+
+        // Filter empty rows
+        const validRows = utilizationRows.filter(r => r.partNumber.trim() !== '');
+        if (validRows.length === 0) {
+            alert("Please enter at least one part number.");
+            return;
+        }
+
+        try {
+            await db.transaction('rw', 'partsUtilization', 'inventoryItems', 'kitItems', async () => {
+                const timestamp = new Date().toISOString();
+
+                for (const row of validRows) {
+                    const qty = parseInt(row.quantity) || 0;
+                    if (qty <= 0) continue;
+
+                    // 1. Record Utilization
+                    await db.partsUtilization.add({
+                        deploymentId: selectedDeploymentId,
+                        partNumber: row.partNumber,
+                        quantity: qty,
+                        type: row.type,
+                        date: timestamp.split('T')[0],
+                        createdAt: timestamp
+                    });
+
+                    // 2. Decrement Inventory (Basic Strategy: Check Inventory Items first, then Kit Items)
+                    // Note: This is an implicit "consumption"
+
+                    // Check Additional Inventory first
+                    const invItem = await db.inventoryItems
+                        .where('deploymentId').equals(selectedDeploymentId)
+                        .and(i => String(i.partNumber).toLowerCase() === String(row.partNumber).toLowerCase())
+                        .first();
+
+                    if (invItem) {
+                        const newQty = Math.max(0, (parseInt(invItem.quantity) || 0) - qty);
+                        await db.inventoryItems.update(invItem.id, { quantity: newQty });
+                        continue; // Consumed
+                    }
+
+                    // Check Kits (more complex, might have multiple, just take from first available)
+                    const kits = await db.kits.where('deploymentId').equals(selectedDeploymentId).toArray();
+                    const kitIds = kits.map(k => k.id);
+                    const kItem = await db.kitItems
+                        .where('kitId').anyOf(kitIds)
+                        .and(i => String(i.partNumber).toLowerCase() === String(row.partNumber).toLowerCase())
+                        .first();
+
+                    if (kItem) {
+                        const newActual = Math.max(0, (parseInt(kItem.actualQuantity) || 0) - qty);
+                        await db.kitItems.update(kItem.id, { actualQuantity: newActual });
+                    }
+                }
+            });
+
+            setUtilSuccess(true);
+            setTimeout(() => setUtilSuccess(false), 3000);
+            setUtilizationRows([{ id: Date.now(), partNumber: '', quantity: 1, type: 'Unscheduled' }]);
+            loadData(); // Refresh inventory counts
+        } catch (e) {
+            console.error("Utilization error:", e);
+            alert("Failed to submit utilization: " + e.message);
+        }
+    };
+
     // Render Helpers
     const getRowColor = (actual, expected) => {
         // Safe cast
@@ -492,12 +595,15 @@ const Inventory = () => {
                             {isLocked ? 'Locked' : 'Unlocked'}
                         </button>
                     )}
-                    {hasChanges && (
-                        <button className="btn btn-primary btn-sm gap-2 animate-pulse" onClick={handleSaveAll}>
-                            <Save size={16} />
-                            Save Changes
-                        </button>
-                    )}
+                    {/* Mark Verified / Save All Button */}
+                    <button
+                        className={`btn btn-sm gap-2 ${hasChanges ? "btn-primary animate-pulse" : utilSuccess ? "btn-success" : "btn-secondary"}`}
+                        onClick={handleSaveAll}
+                        title="Save Changes and Mark Inventory Verified"
+                    >
+                        <Save size={16} />
+                        {hasChanges ? "Save Changes" : "Mark Verified"}
+                    </button>
                     <button className="btn btn-secondary btn-sm gap-2" onClick={handleExport}>
                         <Download size={16} />
                         Export
@@ -515,6 +621,22 @@ const Inventory = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Outdated Inventory Warning */}
+            {isInventoryOutdated && (
+                <div className="alert alert-warning shadow-lg mb-6 animate-pulse">
+                    <Clock />
+                    <div>
+                        <h3 className="font-bold">Inventory Check Required</h3>
+                        <div className="text-xs">
+                            {lastUpdateDate
+                                ? `Last updated ${daysSinceLastUpdate} days ago. Please verify and save inventory.`
+                                : "Inventory has never been updated. Please verify and save."}
+                        </div>
+                    </div>
+                    <button className="btn btn-sm btn-ghost" onClick={handleSaveAll}>Mark Verified</button>
+                </div>
+            )}
 
             {/* Incoming Shipment Queue */}
             {incomingShipments.length > 0 && (
@@ -549,6 +671,89 @@ const Inventory = () => {
                     </div>
                 </div>
             )}
+
+            {/* Parts Utilization Tracker */}
+            <div className="card mb-8 border border-primary/20 bg-bg-secondary/30">
+                <div className="card-header py-3 flex justify-between items-center border-b border-primary/10">
+                    <h3 className="card-title text-lg flex items-center gap-2 text-primary">
+                        <Wrench size={18} />
+                        Parts Utilization Tracker
+                    </h3>
+                    {utilSuccess && (
+                        <span className="text-success text-sm flex items-center gap-1 animate-in fade-in slide-in-from-right">
+                            <CheckCircle2 size={14} /> Recorded
+                        </span>
+                    )}
+                </div>
+                <div className="card-body p-4">
+                    <div className="flex flex-col gap-2">
+                        {utilizationRows.map((row, index) => (
+                            <div key={row.id} className="flex flex-col md:flex-row gap-2 items-end">
+                                <div className="form-control flex-1">
+                                    {index === 0 && <label className="label-text text-xs mb-1 block">Part Number</label>}
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            className="input input-sm w-full font-mono"
+                                            placeholder="Part Number"
+                                            value={row.partNumber}
+                                            onChange={(e) => handleUtilChange(row.id, 'partNumber', e.target.value)}
+                                            list={`util-part-list-${row.id}`}
+                                        />
+                                        <datalist id={`util-part-list-${row.id}`}>
+                                            {/* Combine Kits and Inventory for options */}
+                                            {Array.from(new Set([
+                                                ...ConsolidatedKits.map(k => k.partNumber),
+                                                ...inventoryItems.map(i => i.partNumber)
+                                            ])).filter(Boolean).map((pn, i) => (
+                                                <option key={i} value={pn} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+                                </div>
+                                <div className="form-group w-32">
+                                    {index === 0 && <label className="label-text text-xs mb-1 block">Quantity</label>}
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        className="input input-sm w-full"
+                                        value={row.quantity}
+                                        onChange={(e) => handleUtilChange(row.id, 'quantity', e.target.value)}
+                                    />
+                                </div>
+                                <div className="form-group w-40">
+                                    {index === 0 && <label className="label-text text-xs mb-1 block">Type</label>}
+                                    <select
+                                        className="select select-sm w-full"
+                                        value={row.type}
+                                        onChange={(e) => handleUtilChange(row.id, 'type', e.target.value)}
+                                    >
+                                        <option value="Unscheduled">Unscheduled</option>
+                                        <option value="Scheduled">Scheduled</option>
+                                    </select>
+                                </div>
+                                <div className="pb-1">
+                                    <button
+                                        className="btn btn-sm btn-ghost text-muted hover:text-error"
+                                        onClick={() => handleRemoveUtilRow(row.id)}
+                                        disabled={utilizationRows.length === 1}
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="flex justify-between mt-4">
+                        <button className="btn btn-sm btn-ghost gap-2" onClick={handleAddUtilRow}>
+                            <Plus size={16} /> Add Part
+                        </button>
+                        <button className="btn btn-primary btn-sm gap-2" onClick={handleSubmitUtilization}>
+                            <Save size={16} /> Submit Utilization
+                        </button>
+                    </div>
+                </div>
+            </div>
 
 
 

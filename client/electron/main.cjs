@@ -11,6 +11,7 @@ const createWindow = () => {
     const mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
+        center: true,
         icon: path.join(__dirname, '../public/uscg-logo.svg'), // Note: SVGs might not work as window icons on all OS, usually ICO/PNG preferred
         webPreferences: {
             nodeIntegration: false,

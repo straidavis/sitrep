@@ -175,10 +175,6 @@ export const getFlightStats = async (deploymentIds = null) => {
                 ? deploymentIds.map(id => parseInt(id))
                 : [parseInt(deploymentIds)];
 
-            // Only filter if we have valid IDs, otherwise show all/none? 
-            // If empty array passed, usually means "select all active" or "select none". 
-            // In layout, "All Deployments" might mean null or empty array.
-            // If null is passed, we show all. If array is passed, we filter by it.
             if (ids.length > 0 && !ids.includes(NaN)) {
                 flights = flights.filter(f => ids.includes(f.deploymentId));
             }
@@ -190,17 +186,58 @@ export const getFlightStats = async (deploymentIds = null) => {
             acc[f.status] = (acc[f.status] || 0) + 1;
             return acc;
         }, {});
-        const byMissionType = flights.reduce((acc, f) => {
-            // Assuming missionType might not exist in new schema, but keeping for compatibility if needed
-            // Or remove if not used. The new schema uses missionNumber.
-            // Let's just keep status breakdown for now as per dashboard.
-            return acc;
-        }, {});
+
+        // --- New MRR Logic ---
+        // S = Successful Flights (Status: 'Complete')
+        // F = Failures (Status: 'CNX') caused by Shield AI
+        // Other cancellations are ignored.
+        const importConstants = await import('../utils/constants'); // Dynamic import
+        const getResponsibleParty = importConstants.getResponsibleParty;
+
+        let S = 0;
+        let F = 0;
+
+        flights.forEach(f => {
+            const status = f.status ? f.status.trim().toLowerCase() : '';
+
+            if (status === 'complete') {
+                S++;
+            } else if (status === 'cnx' || status === 'cancelled') {
+                // Determine responsible party
+                // If f.responsibleParty is saved, use it. Else lookup via reason.
+                let party = f.responsibleParty;
+                if (!party && f.reasonForDelay) {
+                    party = getResponsibleParty(f.reasonForDelay);
+                }
+
+                // Strict check for 'Shield AI'
+                if (party === 'Shield AI') {
+                    F++;
+                }
+            }
+        });
+
+        // MRR
+        const totalRelevant = S + F;
+        const currentMRR = totalRelevant > 0 ? (S / totalRelevant) * 100 : 100;
+
+        // Flights required to reach 95% MRR
+        // Formula: x >= (0.95(S+F) - S) / (1 - 0.95)
+        let flightsTo95 = 0;
+        if (currentMRR < 95) {
+            const numerator = (0.95 * totalRelevant) - S;
+            const res = numerator / 0.05;
+            flightsTo95 = Math.ceil(res);
+            if (flightsTo95 < 0) flightsTo95 = 0;
+        }
 
         return {
             totalFlights,
             totalHours,
-            byStatus
+            byStatus,
+            missionReliability: currentMRR,
+            flightsTo95MRR: flightsTo95,
+            debug: { S, F, totalRelevant }
         };
     } catch (error) {
         console.error('Error getting flight stats:', error);

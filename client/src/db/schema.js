@@ -7,20 +7,30 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('SITREPDatabase');
 
+// Handle version changes (multi-tab support)
+db.on('versionchange', function (event) {
+    if (confirm("Database version change detected. Reload page to update?")) {
+        window.location.reload();
+    }
+    return false; // Let the other tab know we are handling it (by closing/reloading)
+});
+
 // Define database schema
-db.version(9).stores({
+db.version(12).stores({
     flights: '++id, date, missionNumber, aircraftNumber, launcher, numberOfLaunches, status, deploymentId, scheduledLaunchTime, launchTime, recoveryTime, createdAt, updatedAt',
     equipment: '++id, date, category, equipment, serialNumber, status, deploymentId, location, software, createdAt, updatedAt',
-    deployments: '++id, name, type, startDate, endDate, location, userEmails, createdAt, updatedAt',
+    deployments: '++id, name, type, startDate, endDate, location, userEmails, createdAt, updatedAt, lastInventoryUpdate', // added lastInventoryUpdate
     personnel: '++id, name, rank, role, createdAt, updatedAt',
-    users: '++id, email, role, addedBy, createdAt', // Local permission overrides
+    users: '++id, email, passwordHash, tempPassword, mustChangePassword, role, addedBy, createdAt', // Local permission overrides
     apiKeys: '++id, key, name, status, createdAt', // For external access
     settings: 'key',
     kits: '++id, name, version, deploymentId, createdAt',
     kitItems: '++id, kitId, partNumber, description, quantity, category, serialNumber, actualQuantity',
     inventoryItems: '++id, deploymentId, partNumber, description, quantity, category, location, notes, createdAt, updatedAt',
     shipments: '++id, uid, deploymentId, orderDate, shipDate, hostReceivedDate, siteReceivedDate, status, createdAt',
-    shipmentItems: '++id, shipmentId, partNumber, description, quantity, serialNumber, isNewItem, receivedDate'
+    shipmentItems: '++id, shipmentId, partNumber, description, quantity, serialNumber, isNewItem, receivedDate',
+    accessRequests: '++id, email, name, status, requestedAt', // status: 'Pending', 'Approved', 'Denied'
+    partsUtilization: '++id, deploymentId, partNumber, description, quantity, type, date, createdAt' // type: 'Scheduled', 'Unscheduled'
 });
 
 // Type definitions for TypeScript-like intellisense

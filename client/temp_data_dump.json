@@ -1,0 +1,354 @@
+{
+  "weather": [
+    {
+      "Weather Dropdown": "Clear"
+    },
+    {
+      "Weather Dropdown": "Clear Air Turbulence"
+    },
+    {
+      "Weather Dropdown": "Crosswinds"
+    },
+    {
+      "Weather Dropdown": "Dust"
+    },
+    {
+      "Weather Dropdown": "Fog"
+    },
+    {
+      "Weather Dropdown": "High Seas"
+    },
+    {
+      "Weather Dropdown": "Hurricane/Typhoon"
+    },
+    {
+      "Weather Dropdown": "Ice"
+    },
+    {
+      "Weather Dropdown": "Icing"
+    },
+    {
+      "Weather Dropdown": "Lightning"
+    },
+    {
+      "Weather Dropdown": "Low Ceiling"
+    },
+    {
+      "Weather Dropdown": "Low Visibility"
+    },
+    {
+      "Weather Dropdown": "Rain"
+    },
+    {
+      "Weather Dropdown": "Rain - Drizzle"
+    },
+    {
+      "Weather Dropdown": "Rain - Freezing"
+    },
+    {
+      "Weather Dropdown": "Rain - Heavy"
+    },
+    {
+      "Weather Dropdown": "Rain - Light"
+    },
+    {
+      "Weather Dropdown": "Sandstorm"
+    },
+    {
+      "Weather Dropdown": "Snow"
+    },
+    {
+      "Weather Dropdown": "Thunderstorm"
+    },
+    {
+      "Weather Dropdown": "Tornado"
+    },
+    {
+      "Weather Dropdown": "Turbulence"
+    },
+    {
+      "Weather Dropdown": "Wind"
+    },
+    {
+      "Weather Dropdown": "Winds - Gusting"
+    }
+  ],
+  "cancel": [
+    {
+      "Cancel/Abort/Delay Criteria": "Aircraft",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Avionics",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Back Up AV Used",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Camera Replaced",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Comm's Loss",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Comm's Poor",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Customer Directed",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "DGPS Failure",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Engine",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Engine - High RPM",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Engine - High Temp",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Engine - Low RPM",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Engine - Tach",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Engine Replaced",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Flight Controls",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Fuel - Contaminated",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "GCS Malfunction",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Generator - AC",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Generator - Customer",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Generator - Ground",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "GPS - AC",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "GPS - Ground",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Ground Equipment",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Interference/Jamming",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Late Flight Authorization",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "No Reason Given",
+      "Responsible Party": "TBD"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Other",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Ship - Other",
+      "Responsible Party": "USCG"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Turret",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Turret Malfunction",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Video",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Video None",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Video Poor",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Clear Air Turbulence",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Crosswinds",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Dust",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Fog",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - High Seas",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Hurricane/Typhoon",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Icing",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Lightning",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Low Ceiling",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Low Visibility",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Rain",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Rain - Drizzle",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Rain - Freezing",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Rain - Heavy",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Rain - Light",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Sandstorm",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Snow",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Thunderstorm",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Tornado",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Turbulence",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Wind",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Weather - Winds - Gusting",
+      "Responsible Party": "Other"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Wing Replacement",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "DGPS",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Engine - Cut",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Fuel - Low",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Fuel -  Ran out of Fuel",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Poor Communication",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Equipment Failure",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Fuel - Fuel Sensor Calibration",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Fuel - None on hand",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "High RPM",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Low RPM",
+      "Responsible Party": "Shield AI"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Out of AO",
+      "Responsible Party": "USCG"
+    },
+    {
+      "Cancel/Abort/Delay Criteria": "Ship - RAS",
+      "Responsible Party": "USCG"
+    }
+  ]
+}

@@ -149,15 +149,28 @@ const Dashboard = () => {
                     </div>
                     <div className="stat-label">Mission Reliability</div>
                     <div className="stat-value">
-                        {(() => {
-                            const total = flightStats?.totalFlights || 0;
-                            const cancelled = flightStats?.byStatus?.['CNX'] || 0;
-                            const percent = total > 0 ? ((total - cancelled) / total) * 100 : 100;
-                            return `${percent.toFixed(1)}%`;
-                        })()}
+                        {flightStats?.missionReliability?.toFixed(1) || '100.0'}%
                     </div>
                     <div className="stat-change">
-                        Missions not cancelled
+                        Shield AI Adjusted
+                    </div>
+                </div>
+
+                {/* Flights to 95% */}
+                <div className="stat-card">
+                    <div className="stat-header">
+                        <div className="stat-icon" style={{ color: 'var(--color-success)' }}>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                            </svg>
+                        </div>
+                    </div>
+                    <div className="stat-label">Flights to 95%</div>
+                    <div className="stat-value">
+                        {flightStats?.flightsTo95MRR || 0}
+                    </div>
+                    <div className="stat-change">
+                        Changes required
                     </div>
                 </div>
             </div>

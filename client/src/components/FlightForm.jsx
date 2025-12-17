@@ -5,6 +5,8 @@ import { getAllDeployments } from '../db/deployments';
 import { useDeployment } from '../context/DeploymentContext';
 import { useAuth } from '../context/AuthContext';
 
+import { WEATHER_OPTIONS, CANCELLATION_CRITERIA, getResponsibleParty } from '../utils/constants';
+
 const FlightForm = ({ flight, onSave, onCancel }) => {
     // Get global context for auto-fill logic
     const { selectedDeploymentIds } = useDeployment();
@@ -27,6 +29,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
         payload2: '',
         payload3: '',
         reasonForDelay: '',
+        responsibleParty: '', // Added field
         weather: '',
         winds: '',
         oat: '',
@@ -70,6 +73,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                 payload2: flight.payload2 || '',
                 payload3: flight.payload3 || '',
                 reasonForDelay: flight.reasonForDelay || '',
+                responsibleParty: flight.responsibleParty || '',
                 weather: flight.weather || '',
                 winds: flight.winds || '',
                 oat: flight.oat || '',
@@ -144,6 +148,13 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
             setFormData(prev => ({ ...prev, hours: diff.toFixed(1) }));
         }
     }, [formData.launchTime, formData.recoveryTime]);
+
+    // Handling Reason Change to Auto-Fill Responsible Party
+    const handleReasonChange = (e) => {
+        const reason = e.target.value;
+        const responsible = getResponsibleParty(reason);
+        setFormData(prev => ({ ...prev, reasonForDelay: reason, responsibleParty: responsible }));
+    };
 
     const loadEquipment = async () => {
         try {
@@ -246,6 +257,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
             payload2: formData.payload2,
             payload3: formData.payload3,
             reasonForDelay: formData.reasonForDelay,
+            responsibleParty: formData.responsibleParty, // Save this!
             weather: formData.weather,
             winds: formData.winds,
             oat: parseInt(formData.oat) || 0,
@@ -516,32 +528,50 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
             </div>
 
             {/* Reason for Cancel, Abort or Delay */}
-            <div className="form-group">
-                <label className="form-label">REASON for Cancel, Abort or Delay</label>
-                <input
-                    type="text"
-                    name="reasonForDelay"
-                    className="input"
-                    placeholder="Enter reason if applicable"
-                    value={formData.reasonForDelay}
-                    onChange={handleChange}
-                    disabled={!canEdit}
-                />
+            <div className="grid grid-cols-2" style={{ gap: 'var(--spacing-lg)' }}>
+                <div className="form-group">
+                    <label className="form-label">REASON for Cancel, Abort or Delay</label>
+                    <select
+                        name="reasonForDelay"
+                        className="select"
+                        value={formData.reasonForDelay}
+                        onChange={handleReasonChange}
+                        disabled={!canEdit}
+                    >
+                        <option value="">Select Reason...</option>
+                        {CANCELLATION_CRITERIA.map((item, idx) => (
+                            <option key={idx} value={item.label}>{item.label}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="form-group">
+                    <label className="form-label">Responsible Party</label>
+                    <input
+                        type="text"
+                        className="input"
+                        value={formData.responsibleParty || ''}
+                        readOnly
+                        style={{ backgroundColor: 'var(--color-bg-tertiary)' }}
+                    />
+                </div>
             </div>
 
             {/* Weather Conditions Section */}
             <div className="grid grid-cols-3" style={{ gap: 'var(--spacing-lg)' }}>
                 <div className="form-group">
                     <label className="form-label">Weather</label>
-                    <input
-                        type="text"
+                    <select
                         name="weather"
-                        className="input"
-                        placeholder="e.g., Clear skies"
+                        className="select"
                         value={formData.weather}
                         onChange={handleChange}
                         disabled={!canEdit}
-                    />
+                    >
+                        <option value="">Select Weather Conditions...</option>
+                        {WEATHER_OPTIONS.map((item, idx) => (
+                            <option key={idx} value={item}>{item}</option>
+                        ))}
+                    </select>
                 </div>
 
                 <div className="form-group">

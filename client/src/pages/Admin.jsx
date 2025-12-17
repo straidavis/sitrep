@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../db/schema';
 import { useAuth } from '../context/AuthContext';
-import { Trash2, UserPlus, Key, Shield, AlertTriangle, Database, Download, Upload, Pencil, X } from 'lucide-react';
+import { useDeployment } from '../context/DeploymentContext';
+import { Trash2, UserPlus, Key, Shield, AlertTriangle, Database, Download, Upload, Pencil, X, Check, Plus, Wrench } from 'lucide-react';
 import { format } from 'date-fns';
+import * as XLSX from 'xlsx';
 
 const Admin = () => {
     const { user, roles } = useAuth();
+    const { deployments } = useDeployment();
     const [users, setUsers] = useState([]);
+    const [accessRequests, setAccessRequests] = useState([]);
     const [apiKeys, setApiKeys] = useState([]);
     const [newUserEmail, setNewUserEmail] = useState('');
     const [newUserRole, setNewUserRole] = useState('Sitrep.Editor');
@@ -19,8 +23,10 @@ const Admin = () => {
     const fileInputRef = React.useRef(null);
 
     // Deployment assignment state
-    const [deployments, setDeployments] = useState([]);
     const [selectedDeployments, setSelectedDeployments] = useState([]);
+
+    // Import State
+    const [selectedImportDeployment, setSelectedImportDeployment] = useState('');
 
     // Trigger file input click safely
     const handleRestoreTrigger = () => {
@@ -39,15 +45,50 @@ const Admin = () => {
         try {
             setLoading(true);
             const loadedUsers = await db.users.toArray();
+            const loadedRequests = await db.accessRequests.where('status').equals('Pending').toArray();
             const loadedKeys = await db.apiKeys.toArray();
-            const loadedDeployments = await db.deployments.toArray();
+
             setUsers(loadedUsers);
+            setAccessRequests(loadedRequests);
             setApiKeys(loadedKeys);
-            setDeployments(loadedDeployments.filter(d => d.status === 'Active' || d.status === 'Planning'));
         } catch (error) {
             console.error('Error loading admin data', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // --- Access Requests ---
+    const handleApproveRequest = async (request) => {
+        try {
+            await db.transaction('rw', db.users, db.accessRequests, async () => {
+                // Add to users
+                const existing = await db.users.where('email').equals(request.email).first();
+                if (!existing) {
+                    await db.users.add({
+                        email: request.email,
+                        role: 'Sitrep.Editor', // Default role
+                        addedBy: user.username,
+                        createdAt: new Date().toISOString()
+                    });
+                }
+                // Update request status
+                await db.accessRequests.update(request.id, { status: 'Approved' });
+            });
+            await loadData();
+        } catch (e) {
+            console.error(e);
+            alert('Failed to approve');
+        }
+    };
+
+    const handleDenyRequest = async (request) => {
+        try {
+            await db.accessRequests.update(request.id, { status: 'Denied' });
+            await loadData();
+        } catch (e) {
+            console.error(e);
+            alert('Failed to deny');
         }
     };
 
@@ -78,84 +119,109 @@ const Admin = () => {
         setSelectedDeployments([]);
     };
 
+    const generateTempPassword = () => {
+        // e.g., "Abc#1234" like pattern
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%";
+        let pass = "";
+        for (let i = 0; i < 10; i++) {
+            pass += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return pass;
+    };
+
     const handleSaveUser = async (e) => {
         e.preventDefault();
         if (!newUserEmail) return;
 
         try {
+            let tempPass = null;
+
             await db.transaction('rw', db.users, db.deployments, async () => {
 
                 if (editingUser) {
                     // UPDATE EXISTING
                     await db.users.update(editingUser.id, {
                         role: newUserRole,
-                        // Email is usually constant, but if changed we'd need to migrate. 
-                        // For simplicity, we assume email matches for now or we prevent editing email in UI.
                     });
                 } else {
                     // CREATE NEW
-                    // Check if exists first
                     const existing = await db.users.where('email').equals(newUserEmail).first();
                     if (existing) {
                         alert('User already exists');
                         return;
                     }
 
+                    tempPass = generateTempPassword(); // Generate temp password for new user
+
                     await db.users.add({
                         email: newUserEmail,
                         role: newUserRole,
-                        addedBy: user?.username || 'Unknown',
+                        addedBy: user.username,
+                        tempPassword: tempPass,
+                        mustChangePassword: true,
                         createdAt: new Date().toISOString()
                     });
                 }
 
-                // SYNC DEPLOYMENTS (Add to selected, Remove from unselected)
-                // We iterate ALL loaded deployments (active/planning) to ensure state is consistent
-                for (const dep of deployments) {
-                    const shouldBeAssigned = selectedDeployments.includes(dep.id);
+                // Update Deployments
+                const allDeployments = await db.deployments.toArray();
 
-                    // Get current email list safely
-                    let currentEmails = dep.userEmails
-                        ? (Array.isArray(dep.userEmails) ? [...dep.userEmails] : String(dep.userEmails).split(',').map(e => e.trim()).filter(e => e))
+                for (const d of allDeployments) {
+                    const email = editingUser ? editingUser.email : newUserEmail;
+                    let emails = d.userEmails
+                        ? (Array.isArray(d.userEmails) ? [...d.userEmails] : String(d.userEmails).split(',').map(e => e.trim()).filter(e => e))
                         : [];
 
-                    const hasEmail = currentEmails.includes(newUserEmail);
-                    let changed = false;
+                    const shouldBeAssigned = selectedDeployments.includes(d.id);
+                    const isAssigned = emails.includes(email);
 
-                    if (shouldBeAssigned && !hasEmail) {
-                        currentEmails.push(newUserEmail);
-                        changed = true;
-                    } else if (!shouldBeAssigned && hasEmail) {
-                        currentEmails = currentEmails.filter(e => e !== newUserEmail);
-                        changed = true;
-                    }
-
-                    if (changed) {
-                        await db.deployments.update(dep.id, { userEmails: currentEmails });
+                    if (shouldBeAssigned && !isAssigned) {
+                        emails.push(email);
+                        await db.deployments.update(d.id, { userEmails: emails });
+                    } else if (!shouldBeAssigned && isAssigned) {
+                        emails = emails.filter(e => e !== email);
+                        await db.deployments.update(d.id, { userEmails: emails });
                     }
                 }
+
             });
+
+            if (tempPass) {
+                alert(`User created! \nTemporary Password: ${tempPass}\n\nPlease share this securely with the user.`);
+            }
 
             cancelEdit();
             loadData();
         } catch (error) {
-            console.error('Failed to save user', error);
-            alert('Error saving user data.');
+            console.error('Error saving user:', error);
+            alert('Failed to save user');
         }
     };
 
-    const toggleDeploymentSelection = (id) => {
-        if (selectedDeployments.includes(id)) {
-            setSelectedDeployments(selectedDeployments.filter(d => d !== id));
-        } else {
-            setSelectedDeployments([...selectedDeployments, id]);
+    const handleResetPassword = async (userId) => {
+        if (!confirm("Are you sure you want to reset this user's password? It will set a temporary one.")) return;
+
+        try {
+            const tempPass = generateTempPassword();
+            await db.users.update(userId, {
+                passwordHash: null,
+                tempPassword: tempPass,
+                mustChangePassword: true
+            });
+            alert(`Password Reset!\nTemporary Password: ${tempPass}\n\nPlease share this securely with the user.`);
+        } catch (e) {
+            console.error(e);
+            alert("Failed to reset password.");
         }
     };
 
-    const handleRemoveUser = async (id) => {
-        if (confirm('Are you sure you want to remove this user permission?')) {
+    const handleDeleteUser = async (id) => {
+        if (!confirm('Are you sure? This will remove their explicit permissions.')) return;
+        try {
             await db.users.delete(id);
-            loadData();
+            await loadData();
+        } catch (error) {
+            console.error(error);
         }
     };
 
@@ -260,6 +326,143 @@ const Admin = () => {
         }
     };
 
+
+
+    // --- Data Imports ---
+
+    const handleHistoricalDeployment = async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const name = formData.get('name');
+        const location = formData.get('location');
+        const startDate = formData.get('startDate');
+
+        try {
+            await db.deployments.add({
+                name,
+                location,
+                startDate,
+                status: 'Completed',     // Historical
+                type: 'Land',            // Default or add selector
+                createdAt: new Date().toISOString()
+            });
+            alert('Historical Deployment Created');
+            e.target.reset();
+            loadData();
+        } catch (error) {
+            console.error(error);
+            alert('Failed to create deployment');
+        }
+    };
+
+    const handleImportFlights = async (e) => {
+        const file = e.target.files[0];
+        if (!file || !selectedImportDeployment) {
+            alert("Please select a file and a target deployment.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                const data = XLSX.utils.sheet_to_json(ws);
+
+                // Expected Headers: Date, Mission Number, Aircraft, Flight Hours, Cancellation Criteria
+                // We map them to DB schema
+                let count = 0;
+                await db.transaction('rw', db.flights, async () => {
+                    for (const row of data) {
+                        // Basic validation/mapping
+                        if (row['Date'] && row['Mission Number']) {
+
+                            // Cancellation Logic
+                            const cancelVal = row['Cancellation Criteria'] || row['Cancellation'];
+                            let status = 'Complete';
+                            let reason = '';
+
+                            // Check if cancellation is valid (not blank, N/A, etc)
+                            const isCancelled = cancelVal && !['', 'n/a', 'na', 'none', '-', 'null'].includes(String(cancelVal).trim().toLowerCase());
+
+                            if (isCancelled) {
+                                status = 'CNX';
+                                // "if the cancelation criteria does not meet the existing criteria, consider it 'other'"
+                                // Since we don't have a hardcoded list of criteria, we just save the value.
+                                // If strict mapping is needed, we would normalize here.
+                                reason = String(cancelVal).trim();
+                            }
+
+                            await db.flights.add({
+                                deploymentId: parseInt(selectedImportDeployment),
+                                date: row['Date'], // Ensure formatting?
+                                missionNumber: String(row['Mission Number']),
+                                aircraftNumber: String(row['Aircraft'] || ''),
+                                flightHours: parseFloat(row['Flight Hours'] || 0),
+                                status: status,
+                                reasonForDelay: reason,
+                                createdAt: new Date().toISOString()
+                            });
+                            count++;
+                        }
+                    }
+                });
+                alert(`Imported ${count} flight records.`);
+                e.target.value = null; // Reset file input
+            } catch (err) {
+                console.error(err);
+                alert("Import failed: " + err.message);
+            }
+        };
+        reader.readAsBinaryString(file);
+    };
+
+    const handleImportParts = async (e) => {
+        const file = e.target.files[0];
+        if (!file || !selectedImportDeployment) {
+            alert("Please select a file and a target deployment.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                const data = XLSX.utils.sheet_to_json(ws);
+
+                // Expected: Date, Part Number, Quantity, Type
+                let count = 0;
+                await db.transaction('rw', db.partsUtilization, async () => {
+                    for (const row of data) {
+                        if (row['Part Number'] && row['Date']) {
+                            await db.partsUtilization.add({
+                                deploymentId: parseInt(selectedImportDeployment),
+                                date: row['Date'],
+                                partNumber: String(row['Part Number']),
+                                quantity: parseInt(row['Quantity'] || 1),
+                                type: row['Type'] || 'Unscheduled',
+                                description: row['Description'] || '',
+                                createdAt: new Date().toISOString()
+                            });
+                            count++;
+                        }
+                    }
+                });
+                alert(`Imported ${count} usage records.`);
+                e.target.value = null;
+            } catch (err) {
+                console.error(err);
+                alert("Import failed: " + err.message);
+            }
+        };
+        reader.readAsBinaryString(file);
+    };
+
     const handleDeleteKey = async (id) => {
         if (confirm('Delete this key permanently?')) {
             await db.apiKeys.delete(id);
@@ -271,302 +474,268 @@ const Admin = () => {
 
     // Check if user is actually admin (double check)
     // Note: This UI protection is shallow. Real protection is in the AuthContext/Database rules.
-    const isAdmin = roles?.includes('Sitrep.Admin');
+    const isAdmin = roles.includes('Sitrep.Admin');
 
     if (!isAdmin) {
-        return (
-            <div className="flex flex-col items-center justify-center h-full p-20 text-center">
-                <Shield size={64} className="text-error mb-4" />
-                <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
-                <p className="text-muted">You do not have permission to view the Admin Portal.</p>
-            </div>
-        );
+        return <div className="p-8 text-center text-error">Access Denied</div>;
     }
 
     return (
-        <div className="max-w-4xl mx-auto pb-20">
-            {/* Tabs & Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                <div>
-                    <h1 className="page-title flex items-center gap-3">
-                        <Shield className="text-primary" />
-                        Admin Portal
-                    </h1>
-                    <p className="page-description">Manage user permissions, data backups, and API keys.</p>
-                </div>
+        <div className="p-6 max-w-6xl mx-auto space-y-6">
+            <h1 className="text-3xl font-bold mb-6 flex items-center gap-2">
+                <Shield className="text-primary" />
+                Administration
+            </h1>
 
-                <div className="bg-bg-tertiary p-1 rounded-lg inline-flex border border-border">
-                    <button
-                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'admin' ? 'bg-bg-primary shadow-sm text-accent-primary' : 'text-muted hover:text-text-primary'}`}
-                        onClick={() => setActiveTab('admin')}
-                    >
-                        <Shield size={14} />
-                        Administration
-                    </button>
-                    <button
-                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'developer' ? 'bg-bg-primary shadow-sm text-accent-primary' : 'text-muted hover:text-text-primary'}`}
-                        onClick={() => setActiveTab('developer')}
-                    >
-                        <Key size={14} />
-                        Developer API
-                    </button>
+            {/* Quick Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="card bg-bg-secondary border-l-4 border-l-primary p-4 flex items-center justify-between">
+                    <div>
+                        <div className="text-secondary text-sm">Registered Users</div>
+                        <div className="text-2xl font-bold">{users.length}</div>
+                    </div>
+                    <UserPlus className="text-primary opacity-50" size={32} />
+                </div>
+                {accessRequests.length > 0 && (
+                    <div className="card bg-bg-secondary border-l-4 border-l-warning p-4 flex items-center justify-between">
+                        <div>
+                            <div className="text-secondary text-sm">Pending Requests</div>
+                            <div className="text-2xl font-bold text-warning">{accessRequests.length}</div>
+                        </div>
+                        <AlertTriangle className="text-warning opacity-50" size={32} />
+                    </div>
+                )}
+                <div className="card bg-bg-secondary border-l-4 border-l-info p-4 flex items-center justify-between">
+                    <div>
+                        <div className="text-secondary text-sm">System Status</div>
+                        <div className="text-2xl font-bold text-success">Healthy</div>
+                    </div>
+                    <Database className="text-info opacity-50" size={32} />
                 </div>
             </div>
 
-            {/* Admin Content */}
+            {/* Tab Navigation */}
+            <div className="tabs tabs-boxed mb-6 bg-transparent p-0 gap-2">
+                <button
+                    className={`tab tab-lg ${activeTab === 'admin' ? 'tab-active btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setActiveTab('admin')}
+                >
+                    User Management
+                </button>
+                <button
+                    className={`tab tab-lg ${activeTab === 'developer' ? 'tab-active btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setActiveTab('developer')}
+                >
+                    Developer & System
+                </button>
+                <button
+                    className={`tab tab-lg ${activeTab === 'imports' ? 'tab-active btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setActiveTab('imports')}
+                >
+                    Data Imports
+                </button>
+            </div>
+
             {activeTab === 'admin' && (
                 <>
-                    {/* User Permissions Section */}
-                    <div className="card mb-8">
-                        <div className="card-header border-b border-border">
-                            <h3 className="card-title flex items-center gap-2 text-base">
-                                <UserPlus size={18} />
-                                User Permissions
-                            </h3>
-                        </div>
-                        <div className="card-body">
-                            {/* Add/Edit User Form */}
-                            <form onSubmit={handleSaveUser} className={`rounded-lg p-5 mb-6 border ${editingUser ? 'bg-primary/5 border-primary/20' : 'bg-bg-tertiary/50 border-border'}`}>
-                                <div className="flex justify-between items-center mb-4">
-                                    <h4 className="card-title text-sm uppercase tracking-wide text-muted">
-                                        {editingUser ? 'Edit User' : 'Add New User'}
-                                    </h4>
-                                    {editingUser && (
-                                        <button type="button" onClick={cancelEdit} className="text-xs flex items-center gap-1 text-muted hover:text-text-primary transition-colors">
-                                            <X size={14} /> Cancel Edit
-                                        </button>
-                                    )}
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                                    <div className="md:col-span-5">
-                                        <label className="form-label text-xs font-semibold uppercase text-muted mb-1.5 block">Email Address</label>
-                                        <input
-                                            type="email"
-                                            className="input w-full h-9 text-sm"
-                                            placeholder="user@company.com"
-                                            value={newUserEmail}
-                                            onChange={e => setNewUserEmail(e.target.value)}
-                                            required
-                                            disabled={!!editingUser}
-                                            title={editingUser ? "To change email, remove and add new user." : ""}
-                                        />
-                                    </div>
-                                    <div className="md:col-span-4">
-                                        <label className="form-label text-xs font-semibold uppercase text-muted mb-1.5 block">Role</label>
-                                        <select
-                                            className="select w-full h-9 text-sm"
-                                            value={newUserRole}
-                                            onChange={e => setNewUserRole(e.target.value)}
-                                        >
-                                            <option value="Sitrep.Editor">Editor (Can edit data)</option>
-                                            <option value="Sitrep.Deployer">Deployer (Restricted access)</option>
-                                            <option value="Sitrep.Admin">Admin (Full Access)</option>
-                                        </select>
-                                    </div>
-                                    <div className="md:col-span-3">
-                                        <button type="submit" className={`btn btn-sm w-full h-9 ${editingUser ? 'btn-success' : 'btn-primary'}`}>
-                                            {editingUser ? 'Save Changes' : 'Add User'}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Deployment Selection for Deployers */}
-                                {newUserRole === 'Sitrep.Deployer' && (
-                                    <div className="mt-4 pt-4 border-t border-border/50 animate-in fade-in zoom-in-95 duration-200">
-                                        <label className="form-label text-xs font-semibold uppercase text-accent-primary mb-2 block">Assigned Deployments</label>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto bg-bg-primary/50 p-2 rounded border border-border/50">
-                                            {deployments.map(d => (
-                                                <label key={d.id} className="flex items-center gap-2.5 p-2 rounded hover:bg-bg-elevated cursor-pointer select-none transition-colors border border-transparent hover:border-border/50">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedDeployments.includes(d.id)}
-                                                        onChange={() => toggleDeploymentSelection(d.id)}
-                                                        className="checkbox w-4 h-4 rounded-sm"
-                                                    />
-                                                    <span className="text-sm truncate leading-none pt-0.5">{d.name || d.location}</span>
-                                                </label>
-                                            ))}
-                                            {deployments.length === 0 && <span className="text-sm text-muted italic p-2">No active deployments found.</span>}
-                                        </div>
-                                    </div>
-                                )}
-                            </form>
-
-                            {/* User List */}
-                            <div className="overflow-hidden border border-border rounded-lg shadow-sm">
-                                <table className="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr className="bg-bg-tertiary border-b border-border">
-                                            <th className="py-2.5 px-4 text-xs font-semibold text-muted uppercase tracking-wider">Email</th>
-                                            <th className="py-2.5 px-4 text-xs font-semibold text-muted uppercase tracking-wider">Role</th>
-                                            <th className="py-2.5 px-4 text-xs font-semibold text-muted uppercase tracking-wider">Date Added</th>
-                                            <th className="py-2.5 px-4 text-xs font-semibold text-muted uppercase tracking-wider text-right">Actions</th>
+                    {/* Access Requests Table */}
+                    {accessRequests.length > 0 && (
+                        <div className="card shadow-lg border border-warning/20 mb-8">
+                            {/* ... (existing requests table content kept same, implied context) ... */}
+                            <div className="card-header flex justify-between items-center bg-warning/5 px-6 py-4">
+                                <h2 className="card-title text-warning flex items-center gap-2">
+                                    <AlertTriangle size={20} />
+                                    Access Requests ({accessRequests.length})
+                                </h2>
+                            </div>
+                            <div className="card-body p-0">
+                                <table className="table w-full">
+                                    <thead className="bg-bg-tertiary">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left">Name</th>
+                                            <th className="px-6 py-3 text-left">Email</th>
+                                            <th className="px-6 py-3 text-left">Reason</th>
+                                            <th className="px-6 py-3 text-left">Date</th>
+                                            <th className="px-6 py-3 text-right">Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-border">
-                                        {Array.isArray(users) && users.length > 0 ? users.map(u => (
-                                            <tr key={u.id} className={`group hover:bg-bg-tertiary/30 transition-colors ${editingUser?.id === u.id ? 'bg-primary/5' : ''}`}>
-                                                <td className="py-2.5 px-4 text-sm font-medium">{u.email}</td>
-                                                <td className="py-2.5 px-4">
-                                                    <span className={`badge text-xs px-2 py-0.5 ${u.role === 'Sitrep.Admin' ? 'badge-primary' : (u.role === 'Sitrep.Deployer' ? 'badge-info' : 'badge-secondary')}`}>
-                                                        {u.role.replace('Sitrep.', '')}
-                                                    </span>
+                                    <tbody>
+                                        {accessRequests.map(req => (
+                                            <tr key={req.id} className="border-t border-border hover:bg-bg-tertiary/50">
+                                                <td className="px-6 py-4 font-medium">{req.name}</td>
+                                                <td className="px-6 py-4 text-muted">{req.email}</td>
+                                                <td className="px-6 py-4 max-w-xs truncate">{req.reason}</td>
+                                                <td className="px-6 py-4 text-sm text-muted">
+                                                    {format(new Date(req.requestedAt), 'MMM dd, HH:mm')}
                                                 </td>
-                                                <td className="py-2.5 px-4 text-sm text-muted">{format(new Date(u.createdAt), 'MMM d, yyyy')}</td>
-                                                <td className="py-2.5 px-4 text-right flex justify-end gap-1">
+                                                <td className="px-6 py-4 text-right flex justify-end gap-2">
                                                     <button
-                                                        onClick={() => startEdit(u)}
-                                                        className="p-1 rounded hover:bg-bg-tertiary text-muted hover:text-accent-primary transition-colors"
-                                                        title="Edit"
+                                                        onClick={() => handleApproveRequest(req)}
+                                                        className="btn btn-success btn-sm"
                                                     >
-                                                        <Pencil size={16} />
+                                                        <Check className="mr-1" size={14} /> Approve
                                                     </button>
                                                     <button
-                                                        onClick={() => handleRemoveUser(u.id)}
-                                                        className="p-1 rounded hover:bg-bg-tertiary text-muted hover:text-error transition-colors"
-                                                        title="Remove"
+                                                        onClick={() => handleDenyRequest(req)}
+                                                        className="btn btn-error btn-sm"
                                                     >
-                                                        <Trash2 size={16} />
+                                                        <X className="mr-1" size={14} /> Deny
                                                     </button>
                                                 </td>
                                             </tr>
-                                        )) : (
-                                            <tr>
-                                                <td colSpan="5" className="py-8 text-center text-muted text-sm italic">No custom permissions found.</td>
-                                            </tr>
-                                        )}
+                                        ))}
                                     </tbody>
                                 </table>
                             </div>
                         </div>
-                    </div>
+                    )}
 
-                    {/* Database Management Section */}
-                    <div className="card mb-8">
-                        <div className="card-body py-5 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                            <div className="flex-1">
-                                <h3 className="text-base font-semibold flex items-center gap-2 mb-1">
-                                    <Database size={18} className="text-muted" />
-                                    System Backup
-                                </h3>
-                                <p className="text-xs text-muted max-w-lg">
-                                    Export your local database to a JSON file for safekeeping, or restore data from a previous backup.
-                                </p>
+                    {/* User List and Form */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Add/Edit User Form */}
+                        <div className="card shadow-lg h-fit">
+                            <div className="card-header">
+                                <h2 className="card-title flex items-center gap-2">
+                                    {editingUser ? <Pencil size={20} /> : <UserPlus size={20} />}
+                                    {editingUser ? 'Edit User' : 'Add New User'}
+                                </h2>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <button onClick={handleBackup} className="btn btn-sm btn-secondary flex items-center gap-2">
-                                    <Download size={14} />
-                                    Backup
-                                </button>
-
-                                <input
-                                    type="file"
-                                    ref={fileInputRef}
-                                    accept=".json"
-                                    onChange={handleRestore}
-                                    className="hidden"
-                                />
-                                <button
-                                    onClick={handleRestoreTrigger}
-                                    className="btn btn-sm btn-outline hover:btn-danger flex items-center gap-2 transition-all"
-                                >
-                                    <Upload size={14} />
-                                    Restore
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* REST API Keys Section */}
-                    <div className="card">
-                        <div className="card-header border-b border-border">
-                            <h3 className="card-title flex items-center gap-2">
-                                <Key size={20} />
-                                REST API Keys
-                            </h3>
-                            <p className="text-sm text-muted mt-1">
-                                Create keys to allow external applications to access the backend SQL database securely.
-                            </p>
-                        </div>
-                        <div className="card-body">
-                            {/* New Key Form */}
-                            <form onSubmit={generateApiKey} className="flex gap-4 mb-6 items-end p-5 bg-bg-tertiary/50 border border-border rounded-lg">
-                                <div className="flex-1">
-                                    <label className="form-label text-xs font-semibold uppercase text-muted mb-1.5 block">Key Name / Description</label>
-                                    <input
-                                        type="text"
-                                        className="input w-full h-9 text-sm"
-                                        placeholder="e.g. PowerBI Connector"
-                                        value={newKeyName}
-                                        onChange={e => setNewKeyName(e.target.value)}
-                                        required
-                                    />
-                                </div>
-                                <button type="submit" className="btn btn-sm btn-primary h-9">
-                                    Generate Key
-                                </button>
-                            </form>
-
-                            {/* Generated Key Display */}
-                            {generatedKey && (
-                                <div className="mb-6 p-4 bg-green-900/20 border border-green-500/50 rounded-lg flex items-start gap-3">
-                                    <AlertTriangle className="text-green-500 mt-1 flex-shrink-0" />
-                                    <div>
-                                        <h4 className="font-bold text-green-500 mb-1">New Key Generated</h4>
-                                        <p className="text-sm mb-2">Copy this key now. You will not be able to see it again.</p>
-                                        <code className="block bg-black/30 p-2 rounded font-mono text-lg break-all select-all">
-                                            {generatedKey}
-                                        </code>
+                            <div className="card-body">
+                                <form onSubmit={handleSaveUser}>
+                                    <div className="form-control mb-4">
+                                        <label className="label">
+                                            <span className="label-text">Email Address</span>
+                                        </label>
+                                        <input
+                                            type="email"
+                                            className="input input-bordered w-full"
+                                            value={newUserEmail}
+                                            onChange={(e) => setNewUserEmail(e.target.value)}
+                                            placeholder="user@example.com"
+                                            disabled={!!editingUser} // Can't edit email of existing
+                                            required
+                                        />
                                     </div>
-                                </div>
-                            )}
+                                    <div className="form-control mb-4">
+                                        <label className="label">
+                                            <span className="label-text">Role</span>
+                                        </label>
+                                        <select
+                                            className="select select-bordered w-full"
+                                            value={newUserRole}
+                                            onChange={(e) => setNewUserRole(e.target.value)}
+                                        >
+                                            <option value="Sitrep.Reader">Reader (Read Only)</option>
+                                            <option value="Sitrep.Editor">Editor (Can Edit)</option>
+                                            <option value="Sitrep.Admin">Admin (Full Access)</option>
+                                        </select>
+                                    </div>
 
-                            {/* Keys List */}
+                                    {/* Deployment Assignment */}
+                                    <div className="form-control mb-6">
+                                        <label className="label">
+                                            <span className="label-text">Assigned Deployments</span>
+                                        </label>
+                                        <div className="border border-border rounded-lg p-2 max-h-48 overflow-y-auto bg-bg-tertiary">
+                                            {deployments.length === 0 ? (
+                                                <div className="text-muted text-sm p-2">No active deployments.</div>
+                                            ) : (
+                                                deployments.map(dep => (
+                                                    <label key={dep.id} className="flex items-center gap-2 p-2 hover:bg-bg-primary rounded cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="checkbox checkbox-sm checkbox-primary"
+                                                            checked={selectedDeployments.includes(dep.id)}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setSelectedDeployments(prev => [...prev, dep.id]);
+                                                                } else {
+                                                                    setSelectedDeployments(prev => prev.filter(id => id !== dep.id));
+                                                                }
+                                                            }}
+                                                        />
+                                                        <span className="text-sm">{dep.name}</span>
+                                                    </label>
+                                                ))
+                                            )}
+                                        </div>
+                                        <label className="label">
+                                            <span className="label-text-alt text-muted text-xs">
+                                                User will only see these deployments if they are not Admin.
+                                            </span>
+                                        </label>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        {editingUser && (
+                                            <button type="button" className="btn btn-ghost flex-1" onClick={cancelEdit}>
+                                                Cancel
+                                            </button>
+                                        )}
+                                        <button type="submit" className="btn btn-primary flex-1">
+                                            {editingUser ? 'Update User' : 'Add User'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        {/* Users List */}
+                        <div className="card shadow-lg lg:col-span-2">
+                            <div className="card-header">
+                                <h2 className="card-title">Authorized Users</h2>
+                            </div>
                             <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse">
+                                <table className="table w-full">
                                     <thead>
-                                        <tr className="border-b border-border text-sm text-muted">
-                                            <th className="py-2 px-4">Name</th>
-                                            <th className="py-2 px-4">Prefix</th>
-                                            <th className="py-2 px-4">Status</th>
-                                            <th className="py-2 px-4">Created</th>
-                                            <th className="py-2 px-4 text-right">Actions</th>
+                                        <tr>
+                                            <th>Email</th>
+                                            <th>Role</th>
+                                            <th>Added By</th>
+                                            <th className="text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {Array.isArray(apiKeys) && apiKeys.length > 0 ? apiKeys.map(k => (
-                                            <tr key={k.id} className="border-b border-border hover:bg-tertiary">
-                                                <td className="py-3 px-4 font-medium">{k.name}</td>
-                                                <td className="py-3 px-4 font-mono text-sm text-muted">{k.key.substr(0, 8)}...</td>
-                                                <td className="py-3 px-4">
-                                                    <span className={`badge ${k.status === 'Active' ? 'badge-success' : 'badge-error'}`}>
-                                                        {k.status}
+                                        {users.map(u => (
+                                            <tr key={u.id} className="hover">
+                                                <td className="font-medium">{u.email}</td>
+                                                <td>
+                                                    <span className={`badge ${u.role === 'Sitrep.Admin' ? 'badge-primary' : 'badge-ghost'}`}>
+                                                        {u.role.replace('Sitrep.', '')}
                                                     </span>
+                                                    {u.mustChangePassword && <span className="badge badge-warning ml-2 text-xs">Reset</span>}
                                                 </td>
-                                                <td className="py-3 px-4 text-sm text-muted">{format(new Date(k.createdAt), 'MMM d, yyyy')}</td>
-                                                <td className="py-3 px-4 text-right flex justify-end gap-2">
-                                                    {k.status === 'Active' && (
+                                                <td className="text-muted text-sm">{u.addedBy || 'System'}</td>
+                                                <td className="text-right">
+                                                    <div className="flex justify-end gap-2">
                                                         <button
-                                                            onClick={() => handleRevokeKey(k.id)}
-                                                            className="btn-sm btn-secondary hover:text-warning"
-                                                            title="Revoke Key"
+                                                            className="btn btn-ghost btn-square btn-sm text-warning"
+                                                            onClick={() => handleResetPassword(u.id)}
+                                                            title="Reset Password"
                                                         >
-                                                            Revoke
+                                                            <Key size={16} />
                                                         </button>
-                                                    )}
-                                                    <button
-                                                        onClick={() => handleDeleteKey(k.id)}
-                                                        className="btn-icon text-muted hover:text-error"
-                                                        title="Delete Key"
-                                                    >
-                                                        <Trash2 size={18} />
-                                                    </button>
+                                                        <button
+                                                            className="btn btn-ghost btn-square btn-sm"
+                                                            onClick={() => startEdit(u)}
+                                                            title="Edit User"
+                                                        >
+                                                            <Pencil size={16} />
+                                                        </button>
+                                                        <button
+                                                            className="btn btn-ghost btn-square btn-sm text-error"
+                                                            onClick={() => handleDeleteUser(u.id)}
+                                                            title="Delete User"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
-                                        )) : (
+                                        ))}
+                                        {users.length === 0 && (
                                             <tr>
-                                                <td colSpan="5" className="py-8 text-center text-muted">No API keys generated.</td>
+                                                <td colSpan="4" className="text-center py-8 text-muted">No users found. Login with 'admin' / 'admin' to bootstrap.</td>
                                             </tr>
                                         )}
                                     </tbody>
@@ -576,6 +745,114 @@ const Admin = () => {
                     </div>
                 </>
             )}
+
+            {/* Data Import Tab */}
+            {activeTab === 'imports' && (
+                <div className="space-y-8 animate-in fade-in">
+                    {/* 1. Historical Deployment */}
+                    <div className="card">
+                        <div className="card-header">
+                            <h3 className="card-title text-primary flex items-center gap-2">
+                                <Plus size={20} />
+                                Add Historical Deployment
+                            </h3>
+                        </div>
+                        <div className="card-body">
+                            <p className="text-muted mb-4">Create a record for a completed deployment to associate historical data with.</p>
+                            <form onSubmit={handleHistoricalDeployment} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                                <div className="form-control">
+                                    <label className="label text-xs">Name</label>
+                                    <input name="name" className="input input-sm" placeholder="e.g. FY23 Q1 Deployment" required />
+                                </div>
+                                <div className="form-control">
+                                    <label className="label text-xs">Location</label>
+                                    <input name="location" className="input input-sm" placeholder="e.g. Site Alpha" required />
+                                </div>
+                                <div className="form-control">
+                                    <label className="label text-xs">Start Date</label>
+                                    <input name="startDate" type="date" className="input input-sm" required />
+                                </div>
+                                <button type="submit" className="btn btn-primary btn-sm">Create Record</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* 2. Flight Logs Import */}
+                        <div className="card">
+                            <div className="card-header">
+                                <h3 className="card-title flex items-center gap-2">
+                                    <Upload size={20} /> Import Flight Logs
+                                </h3>
+                            </div>
+                            <div className="card-body">
+                                <p className="text-sm text-muted mb-4">
+                                    Upload an Excel file containing flight history.
+                                </p>
+                                <div className="alert bg-bg-tertiary mb-4 p-3 text-xs">
+                                    <span className="font-bold block mb-1">Required Columns:</span>
+                                    Date, Mission Number, Aircraft, Flight Hours, Cancellation Criteria (Optional)
+                                </div>
+                                <div className="flex flex-col gap-3">
+                                    <select
+                                        className="select select-bordered select-sm w-full"
+                                        onChange={(e) => setSelectedImportDeployment(e.target.value)}
+                                        value={selectedImportDeployment}
+                                    >
+                                        <option value="">Select Target Deployment...</option>
+                                        {deployments.map(d => (
+                                            <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
+                                        ))}
+                                    </select>
+                                    <input
+                                        type="file"
+                                        accept=".xlsx,.xls"
+                                        className="file-input file-input-bordered file-input-sm w-full"
+                                        onChange={(e) => handleImportFlights(e)}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 3. Parts Utilization Import */}
+                        <div className="card">
+                            <div className="card-header">
+                                <h3 className="card-title flex items-center gap-2">
+                                    <Wrench size={20} /> Import Parts Usage
+                                </h3>
+                            </div>
+                            <div className="card-body">
+                                <p className="text-sm text-muted mb-4">
+                                    Upload an Excel file containing parts usage history.
+                                </p>
+                                <div className="alert bg-bg-tertiary mb-4 p-3 text-xs">
+                                    <span className="font-bold block mb-1">Required Columns:</span>
+                                    Date, Part Number, Quantity, Type (Scheduled/Unscheduled)
+                                </div>
+                                <div className="flex flex-col gap-3">
+                                    <select
+                                        className="select select-bordered select-sm w-full"
+                                        onChange={(e) => setSelectedImportDeployment(e.target.value)}
+                                        value={selectedImportDeployment}
+                                    >
+                                        <option value="">Select Target Deployment...</option>
+                                        {deployments.concat(loadedDeployments?.filter(d => d.status === 'Completed') || []).map(d => (
+                                            <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
+                                        ))}
+                                    </select>
+                                    <input
+                                        type="file"
+                                        accept=".xlsx,.xls"
+                                        className="file-input file-input-bordered file-input-sm w-full"
+                                        onChange={(e) => handleImportParts(e)}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
 
             {/* Developer Content */}
             {activeTab === 'developer' && (
@@ -628,74 +905,14 @@ const Admin = () => {
                                             <code className="text-accent-primary">deploymentId</code>
                                             <span>Integer ID of the deployment</span>
                                         </div>
-                                        <h4 className="text-xs font-bold uppercase text-muted mb-2">Response Example</h4>
-                                        <pre className="bg-black/30 p-3 rounded text-xs font-mono text-muted">
-                                            {`[
-  {
-    "id": 101,
-    "missionNumber": "251212_V-BAT-128",
-    "date": "2025-12-12T10:00:00Z",
-    "aircraftNumber": "V-BAT 128",
-    "duration": 4.5,
-    "status": "Complete"
-  }
-]`}
-                                        </pre>
                                     </div>
                                 </div>
-
-                                {/* GET /equipment */}
-                                <div className="border border-border rounded-lg overflow-hidden">
-                                    <div className="bg-bg-tertiary px-4 py-3 flex items-center gap-3 border-b border-border">
-                                        <span className="badge badge-primary font-mono">GET</span>
-                                        <code className="text-sm font-mono flex-1">/equipment</code>
-                                    </div>
-                                    <div className="p-4">
-                                        <p className="text-sm text-muted mb-3">Get current status of all equipment.</p>
-                                        <h4 className="text-xs font-bold uppercase text-muted mb-2">Response Example</h4>
-                                        <pre className="bg-black/30 p-3 rounded text-xs font-mono text-muted">
-                                            {`[
-  {
-    "id": 5,
-    "category": "Aircraft",
-    "equipment": "V-BAT 128",
-    "serialNumber": "SN-12345",
-    "status": "FMC",
-    "location": "Cutter Midgett"
-  }
-]`}
-                                        </pre>
-                                    </div>
-                                </div>
-
-                                {/* POST /flights */}
-                                <div className="border border-border rounded-lg overflow-hidden">
-                                    <div className="bg-bg-tertiary px-4 py-3 flex items-center gap-3 border-b border-border">
-                                        <span className="badge badge-success font-mono">POST</span>
-                                        <code className="text-sm font-mono flex-1">/flights</code>
-                                    </div>
-                                    <div className="p-4">
-                                        <p className="text-sm text-muted mb-3">Log a new flight record.</p>
-                                        <h4 className="text-xs font-bold uppercase text-muted mb-2">Request Body</h4>
-                                        <pre className="bg-black/30 p-3 rounded text-xs font-mono text-muted">
-                                            {`{
-  "date": "2025-12-12",
-  "aircraftNumber": "SN-12345",
-  "deploymentId": 2,
-  "launchTime": "10:00",
-  "recoveryTime": "14:30"
-}`}
-                                        </pre>
-                                    </div>
-                                </div>
-
                             </div>
 
                         </div>
                     </div>
                 </div>
             )}
-
         </div>
     );
 };

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { differenceInDays } from 'date-fns';
 import {
     Home,
     Plane,
@@ -17,7 +18,10 @@ import {
     ClipboardList,
     Truck,
     Wifi,
-    WifiOff
+    WifiOff,
+    LogIn,
+    Lock,
+    Clock
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
@@ -30,7 +34,6 @@ const Layout = ({ children }) => {
     const dropdownRef = useRef(null);
     const [serverConnected, setServerConnected] = useState(true); // Default false? Or optimistic?
 
-    // Check Server Connection
     // Check Server Connection
     useEffect(() => {
         const checkStatus = async () => {
@@ -74,7 +77,7 @@ const Layout = ({ children }) => {
     }, []);
 
     const { selectedDeploymentIds, setSelectedDeploymentIds, deployments, deployerWarning } = useDeployment();
-    const { user, login, logout, isAuthenticated, roles } = useAuth();
+    const { user, login, logout, isAuthenticated, roles, accessStatus, requestAccess } = useAuth();
 
     // Determine Header Title based on Selection
     const deploymentTitle = (() => {
@@ -101,6 +104,16 @@ const Layout = ({ children }) => {
     if (roles && roles.includes('Sitrep.Admin')) {
         navItems.push({ path: '/admin', icon: Shield, label: 'Admin Portal' });
     }
+
+    const selectedDeployment = (selectedDeploymentIds.length === 1)
+        ? deployments.find(d => d.id === selectedDeploymentIds[0])
+        : null;
+
+    const inventoryNeedsUpdate = React.useMemo(() => {
+        if (!selectedDeployment) return false;
+        if (!selectedDeployment.lastInventoryUpdate) return true; // Never updated
+        return differenceInDays(new Date(), new Date(selectedDeployment.lastInventoryUpdate)) > 7;
+    }, [selectedDeployment]);
 
     const isActive = (path) => location.pathname === path;
 
@@ -155,7 +168,7 @@ const Layout = ({ children }) => {
                     </button>
 
                     <div className="header-brand">
-                        <img src="/logo.png" alt="USCG Logo" style={{ width: '40px', height: '40px' }} />
+                        <img src="logo.png" alt="USCG Logo" style={{ width: '40px', height: '40px' }} />
                         <div className="brand-text">
                             <h1>AMCR</h1>
                             <p className={selectedDeploymentIds.length > 0 ? "text-accent-primary font-bold" : ""}>
@@ -321,7 +334,10 @@ const Layout = ({ children }) => {
                                     className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
                                 >
                                     <Icon size={20} />
-                                    <span className="nav-label">{item.label}</span>
+                                    <span className="nav-label flex-1">{item.label}</span>
+                                    {item.path === '/inventory' && inventoryNeedsUpdate && (
+                                        <span className="w-2 h-2 rounded-full bg-error animate-pulse ml-2" title="Inventory Update Required"></span>
+                                    )}
                                 </Link>
                             );
                         })}
@@ -352,7 +368,185 @@ const Layout = ({ children }) => {
                     </div>
                 </main>
             </div>
+
+            {/* Login Overlay / Modal */}
+            {!isAuthenticated && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-bg-primary/80 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-bg-secondary p-8 rounded-xl shadow-2xl border border-border w-full max-w-md animate-in zoom-in-95 duration-300 mx-4">
+                        <LoginForm onLogin={login} />
+                        <div className="mt-6 text-xs text-muted uppercase tracking-widest text-center">
+                            Internal Use Only
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Change Password Overlay */}
+            {isAuthenticated && user?.mustChangePassword && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-bg-primary/95 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-bg-secondary p-8 rounded-xl shadow-2xl border border-border w-full max-w-md animate-in zoom-in-95 duration-300 mx-4">
+                        <div className="flex flex-col items-center text-center">
+                            <div className="w-16 h-16 bg-warning/10 rounded-full flex items-center justify-center mb-6 text-warning">
+                                <Lock size={32} />
+                            </div>
+                            <h2 className="text-2xl font-bold mb-2">Change Password</h2>
+                            <p className="text-muted mb-6">
+                                You must change your temporary password before continuing.
+                            </p>
+                            <ChangePasswordForm />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
+    );
+};
+
+const LoginForm = ({ onLogin }) => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+        const res = await onLogin(email, password);
+        setLoading(false);
+        if (res && !res.success) {
+            setError(res.message);
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-6 text-primary">
+                    <LogIn size={32} />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">AMCR Login</h2>
+                <p className="text-muted mb-4">
+                    Enter your credentials to sign in.
+                </p>
+            </div>
+
+            {error && <div className="text-error text-sm text-center bg-error/10 p-2 rounded">{error}</div>}
+
+            <div className="form-group">
+                <label className="form-label">Email</label>
+                <input
+                    type="email"
+                    className="input w-full"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    required
+                />
+            </div>
+
+            <div className="form-group">
+                <label className="form-label">Password</label>
+                <input
+                    type="password"
+                    className="input w-full"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    required
+                />
+            </div>
+
+            <button
+                type="submit"
+                className="btn btn-primary w-full py-3 h-auto text-base font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/40 mt-2"
+                disabled={loading}
+            >
+                {loading ? 'Signing In...' : 'Sign In'}
+            </button>
+        </form>
+    );
+};
+
+const ChangePasswordForm = () => {
+    const { changePassword, logout } = useAuth();
+    const [password, setPassword] = useState('');
+    const [confirm, setConfirm] = useState('');
+    const [error, setError] = useState('');
+
+    // Simple complexity check logic
+    const validatePassword = (pwd) => {
+        if (pwd.length < 8) return "Password must be at least 8 characters.";
+        if (!/[A-Z]/.test(pwd)) return "Password must contain an uppercase letter.";
+        if (!/[0-9]/.test(pwd)) return "Password must contain a number.";
+        if (!/[!@#$%^&*]/.test(pwd)) return "Password must contain a special character (!@#$%^&*).";
+        return null;
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+
+        const complexityError = validatePassword(password);
+        if (complexityError) {
+            setError(complexityError);
+            return;
+        }
+
+        if (password !== confirm) {
+            setError("Passwords do not match.");
+            return;
+        }
+
+        try {
+            await changePassword(password);
+            // On success, the overlay disappears because user.mustChangePassword becomes false
+        } catch (e) {
+            setError("Failed to update password.");
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="w-full text-left flex flex-col gap-4">
+            {error && <div className="text-error text-sm text-center bg-error/10 p-2 rounded">{error}</div>}
+
+            <div className="form-group">
+                <label className="form-label">New Password</label>
+                <input
+                    type="password"
+                    className="input w-full"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    required
+                />
+                <span className="text-xs text-muted mt-1 block">Min 8 chars, 1 uppercase, 1 number, 1 special char.</span>
+            </div>
+
+            <div className="form-group">
+                <label className="form-label">Confirm Password</label>
+                <input
+                    type="password"
+                    className="input w-full"
+                    value={confirm}
+                    onChange={e => setConfirm(e.target.value)}
+                    required
+                />
+            </div>
+
+            <div className="flex gap-3 mt-2">
+                <button
+                    type="button"
+                    onClick={logout}
+                    className="btn btn-secondary flex-1"
+                >
+                    Cancel (Log Out)
+                </button>
+                <button
+                    type="submit"
+                    className="btn btn-primary flex-1"
+                >
+                    Update Password
+                </button>
+            </div>
+        </form>
     );
 };
 
