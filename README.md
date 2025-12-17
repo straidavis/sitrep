@@ -1,6 +1,6 @@
-# USCG COCO Planning & Tracking System (SITREP)
+# Operations Planning & Tracking System (SITREP)
 
-**SITREP** (Situation Report) is a comprehensive, offline-capable web application designed to manage deployments, aviation operations, and inventory logistics for USCG COCO (Contractor-Owned, Contractor-Operated) planning.
+**SITREP** (Situation Report) is a comprehensive, offline-capable web application designed to manage deployments, aviation operations, and inventory logistics for complex field operations.
 
 ## 🚀 Overview
 

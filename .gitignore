@@ -8,3 +8,4 @@ database.sqlite
 ~$*
 InitialData.xlsx
 Template_Data.xlsx
+*.bak

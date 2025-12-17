@@ -6,3 +6,5 @@ dist_electron
 *.log
 database.sqlite
 ~$*
+InitialData.xlsx
+Template_Data.xlsx
