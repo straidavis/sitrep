@@ -1,6 +1,8 @@
-node_modules
-dist
-dist_electron
+# Build Output
+dist/
+dist_electron/
+**/dist/
+**/dist_electron/
 .env
 .DS_Store
 *.log
@@ -8,3 +10,10 @@ database.sqlite
 ~$*
 InitialData.xlsx
 Template_Data.xlsx
+Template_Flight_Data.xlsx
+*.xlsx
+Template_Parts_Usage.xlsx
+*.bak
+*.*.bak
+**.bak
+**.exe
