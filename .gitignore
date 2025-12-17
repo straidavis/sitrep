@@ -15,9 +15,10 @@ database.sqlite
 InitialData.xlsx
 Template_Data.xlsx
 Template_Flight_Data.xlsx
-*.xlsx
 Template_Parts_Usage.xlsx
 *.bak
 *.*.bak
 **.bak
+howtow.txt.bak
+.gitignore.bak
 **.exe
