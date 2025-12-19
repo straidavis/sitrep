@@ -178,8 +178,11 @@ const LocalAuthProvider = ({ children }) => {
         try {
             const dbUser = await db.users.where('email').equals(email).first();
             if (!dbUser) {
-                const userCount = await db.users.count();
-                if (userCount === 0 && email === 'admin' && password === 'admin') {
+                // Fallback / Bootstrap Admin: Allow admin/admin if no user found with email "admin"
+                if (email === 'admin' && password === 'admin') {
+                    // Check if a real user named "admin" exists? No, we just checked !dbUser.
+                    // So if you type "admin" and it's not in the DB, we let you in as Bootstrap.
+                    // This allows recovery even if other users exist.
                     // Bootstrap
                     setUser({ id: 0, name: 'Bootstrap Admin', username: 'admin', mustChangePassword: false });
                     setRoles(['Sitrep.Admin', 'Sitrep.Editor']);

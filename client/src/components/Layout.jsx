@@ -172,10 +172,16 @@ const Layout = ({ children }) => {
                     <div className="header-brand">
                         <img src="logo.png" alt="App Logo" style={{ width: '40px', height: '40px' }} />
                         <div className="brand-text">
-                            <h1>AMCR</h1>
-                            <p className={selectedDeploymentIds.length > 0 ? "text-accent-primary font-bold" : ""}>
-                                {deploymentTitle}
-                            </p>
+                            <h1>S.P.A.R.K.</h1>
+                            <p className="text-muted text-xs font-medium uppercase tracking-wider mb-0">Status, Parts, Aircraft Readiness & Kits</p>
+                        </div>
+
+                        {/* Divider */}
+                        <div className="hidden md:block" style={{ height: '32px', width: '1px', backgroundColor: 'var(--color-border)', margin: '0 1.5rem' }}></div>
+
+                        {/* Context Title */}
+                        <div className={`font-bold text-lg hidden md:block ${selectedDeploymentIds.length > 0 ? "text-accent-primary" : "text-muted"}`}>
+                            {deploymentTitle}
                         </div>
                     </div>
 
@@ -427,7 +433,7 @@ const LoginForm = ({ onLogin }) => {
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-6 text-primary">
                     <LogIn size={32} />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">AMCR Login</h2>
+                <h2 className="text-2xl font-bold mb-2">S.P.A.R.K. Login</h2>
                 <p className="text-muted mb-4">
                     Enter your credentials to sign in.
                 </p>
@@ -436,9 +442,9 @@ const LoginForm = ({ onLogin }) => {
             {error && <div className="text-error text-sm text-center bg-error/10 p-2 rounded">{error}</div>}
 
             <div className="form-group">
-                <label className="form-label">Email</label>
+                <label className="form-label">Email / Username</label>
                 <input
-                    type="email"
+                    type="text"
                     className="input w-full"
                     value={email}
                     onChange={e => setEmail(e.target.value)}

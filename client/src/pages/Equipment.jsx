@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Save, Calendar, Search, Edit2 } from 'lucide-react';
-import { format, isSameDay, parseISO, startOfDay } from 'date-fns';
+import { Plus, Save, Calendar, Search, Edit2, AlertTriangle, Clock } from 'lucide-react';
+import { format, isSameDay, parseISO, startOfDay, differenceInDays } from 'date-fns';
 import Modal from '../components/Modal';
 import EquipmentForm from '../components/EquipmentForm';
 import { getAllEquipment, addEquipment, updateEquipment } from '../db/equipment';
@@ -240,7 +240,7 @@ const Equipment = () => {
             case 'FMC': return { text: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)', opacity: 1 };
             case 'PMC': return { text: '#eab308', bg: 'rgba(234, 179, 8, 0.1)', opacity: 1 };
             case 'NMC': return { text: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)', opacity: 1 };
-            case 'CAT5': return { text: '#94a3b8', bg: 'rgba(15, 23, 42, 0.3)', opacity: 0.6 };
+            case 'CAT5': return { text: '#94a3b8', bg: 'rgba(63, 63, 70, 0.4)', opacity: 0.8 }; // Grey/Zinc
             default: return { text: '#f8fafc', bg: 'transparent', opacity: 1 };
         }
     };
@@ -251,8 +251,9 @@ const Equipment = () => {
             <table className="w-full text-sm text-left">
                 <thead className="bg-bg-secondary text-muted font-medium text-xs">
                     <tr>
-                        <th className="px-4 py-3 w-[40%]">Equipment</th>
-                        <th className="px-4 py-3 w-[25%]">Status</th>
+                        <th className="px-4 py-3 w-[30%]">Equipment</th>
+                        <th className="px-4 py-3 w-[20%]">Status</th>
+                        <th className="px-4 py-3 w-[15%]">Last Updated</th>
                         <th className="px-4 py-3">Notes</th>
                         {canEdit && <th className="px-4 py-3 w-[50px]"></th>}
                     </tr>
@@ -260,6 +261,15 @@ const Equipment = () => {
                 <tbody className="divide-y divide-border">
                     {items.map(item => {
                         const colors = getStatusColors(item.status || 'FMC');
+
+                        // Last Updated Logic
+                        const itemDate = item.date ? parseISO(item.date) : new Date();
+                        const daysSinceUpdate = differenceInDays(new Date(), itemDate);
+                        const dep = deployments.find(d => d.id === item.deploymentId);
+                        const isDeploymentActive = dep?.status === 'Active';
+
+                        const isStale = isDeploymentActive && daysSinceUpdate > 1;
+
                         return (
                             <tr key={item.key} className="transition-colors hover:bg-bg-tertiary" style={{ backgroundColor: colors.bg, opacity: colors.opacity }}>
                                 <td className="px-4 py-3 align-middle">
@@ -281,6 +291,16 @@ const Equipment = () => {
                                     >
                                         {statuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                                     </select>
+                                </td>
+                                <td className="px-4 py-3 align-middle">
+                                    <div className={`flex items-center gap-2 text-xs font-medium ${isStale ? 'text-warning' : 'text-muted'}`} title={isStale ? "Status outdated (> 24h)" : `Updated: ${format(itemDate, 'MMM d, yyyy')}`}>
+                                        {isStale ? <AlertTriangle size={14} /> : <Clock size={14} />}
+                                        <span>
+                                            {isSameDay(itemDate, new Date())
+                                                ? 'Today'
+                                                : `${daysSinceUpdate} day${daysSinceUpdate !== 1 ? 's' : ''} ago`}
+                                        </span>
+                                    </div>
                                 </td>
                                 <td className="px-4 py-3 align-middle">
                                     <input
@@ -319,7 +339,7 @@ const Equipment = () => {
             <div key={category} className="mb-6">
                 <div className="flex items-center justify-between mb-3 px-1">
                     <h3 className="text-sm font-bold text-muted uppercase tracking-wider flex items-center gap-2">
-                        <span className="w-1.5 h-4 bg-primary rounded-full"></span>
+                        <span className="w-1.5 h-4 bg-accent-primary rounded-full"></span>
                         {category}
                     </h3>
                     <span className="badge badge-secondary text-xs">{categoryItems.length}</span>

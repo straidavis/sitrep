@@ -16,7 +16,7 @@ const createWindow = () => {
             contextIsolation: true,
             preload: path.join(__dirname, 'preload.cjs')
         },
-        title: "Aircraft Materiel Condition Report"
+        title: "S.P.A.R.K. - Status, Parts, Aircraft Readiness & Kits"
     });
 
     // Remove menu
