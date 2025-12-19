@@ -33,6 +33,7 @@ const Layout = ({ children }) => {
     const location = useLocation();
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
     const dropdownRef = useRef(null);
     const [serverConnected, setServerConnected] = useState(true); // Default false? Or optimistic?
 
@@ -299,6 +300,15 @@ const Layout = ({ children }) => {
                             )}
                         </div>
 
+                        {/* Server Status Indicator */}
+                        <div className="flex items-center" title={serverConnected ? "System Online" : "Local Mode (Offline)"}>
+                            {serverConnected ? (
+                                <Wifi size={20} className="text-emerald-500" />
+                            ) : (
+                                <WifiOff size={20} className="text-amber-500 animate-pulse" />
+                            )}
+                        </div>
+
                         {/* User Profile / Auth */}
                         {isAuthenticated ? (
                             <div className="user-info" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -311,7 +321,7 @@ const Layout = ({ children }) => {
                                 </button>
                             </div>
                         ) : (
-                            <button className="btn btn-primary" onClick={() => login()}>
+                            <button className="btn btn-primary" onClick={() => setIsLoginModalOpen(true)}>
                                 <LogIn size={18} style={{ marginRight: '8px' }} />
                                 Sign In
                             </button>
@@ -351,22 +361,7 @@ const Layout = ({ children }) => {
                         })}
                     </nav>
 
-                    {/* Server Status Footer */}
-                    <div className={`border-t border-border bg-transparent transition-all duration-300 ${sidebarOpen ? 'p-4 opacity-100' : 'p-0 opacity-0 overflow-hidden h-0 border-none'}`}>
-                        <div className="flex items-center gap-3 opacity-50 hover:opacity-100 transition-opacity duration-300">
-                            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${serverConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)] animate-pulse'}`}></div>
-                            <div className="flex flex-col">
-                                <span className={`text-[10px] font-bold uppercase tracking-[0.2em] leading-none ${serverConnected ? 'text-muted' : 'text-warning'}`}>
-                                    {serverConnected ? 'System Online' : 'Local Mode'}
-                                </span>
-                                {!serverConnected && (
-                                    <span className="text-[9px] text-muted mt-1 font-medium">
-                                        Updates sync when online
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
+
                 </aside>
 
                 {/* Main Content */}
@@ -378,9 +373,15 @@ const Layout = ({ children }) => {
             </div>
 
             {/* Login Overlay / Modal */}
-            {!isAuthenticated && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-bg-primary/80 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-bg-secondary p-8 rounded-xl shadow-2xl border border-border w-full max-w-md animate-in zoom-in-95 duration-300 mx-4">
+            {!isAuthenticated && isLoginModalOpen && (
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-bg-primary/80 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="relative bg-bg-secondary p-8 rounded-xl shadow-2xl border border-border w-full max-w-md animate-in zoom-in-95 duration-300 mx-4">
+                        <button
+                            className="absolute top-4 right-4 text-muted hover:text-primary transition-colors"
+                            onClick={() => setIsLoginModalOpen(false)}
+                        >
+                            <X size={24} />
+                        </button>
                         <LoginForm onLogin={login} />
                         <div className="mt-6 text-xs text-muted uppercase tracking-widest text-center">
                             Internal Use Only

@@ -1,9 +1,0 @@
-To deploy, create a folder (e.g., C:\SITREP) and:
-
-Copy both executables into this folder.
-Copy sitrep-config.json into this same folder.
-Edit sitrep-config.json to match your desired environment:
-Set "authMode": "local" or "microsoft".
-Set "serverUrl": "http://localhost:3001" (if running local server) or your Azure URL.
-Run the Server EXE first (if using Local Server).
-Run the Client EXE. It will read the config file from the folder and connect accordingly.
