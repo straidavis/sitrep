@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Save, Calendar, Search, Edit2, AlertTriangle, Clock } from 'lucide-react';
+import { Plus, Save, Calendar, Search, Edit2, AlertTriangle, Clock, Check } from 'lucide-react';
 import { format, isSameDay, parseISO, startOfDay, differenceInDays } from 'date-fns';
 import Modal from '../components/Modal';
 import EquipmentForm from '../components/EquipmentForm';
@@ -156,12 +156,11 @@ const Equipment = () => {
 
     const handleUpdateAll = async () => {
         if (!canEdit) return;
-        if (!confirm(`Save status updates for ${selectedDate}?`)) return;
+        if (!confirm(`Save/Validate status for all ${displayData.length} items for ${selectedDate}?`)) return;
 
         setIsSaving(true);
         try {
             const promises = displayData
-                .filter(item => item.isModified || item.isCarryOver)
                 .map(item => {
                     const dataToSave = {
                         date: new Date(selectedDate).toISOString(),
@@ -203,21 +202,14 @@ const Equipment = () => {
     const handleEditEquipment = (item) => {
         if (!canEdit) return;
         // Reconstruct the full object expected by the form
-        // We need to pass the ID if it exists (for update) or just fields if it's a clone/new
-        // Note: EquipmentForm expects 'equipment' prop.
         setSelectedEquipment({
             ...item,
-            // If editing a carry-over, passing ID=null means "New Entry based on this"
-            // But user might want to edit the MASTER details (like Serial Number). 
-            // Since we store history, editing "Master" details is tricky. 
-            // For now, we allow editing the current record's values.
         });
         setShowModal(true);
     };
 
     const handleSaveForm = async (data) => {
         try {
-            // Check if we are updating an existing ID (if selectedEquipment had an ID and it matches)
             if (selectedEquipment && selectedEquipment.originalId) {
                 await updateEquipment(selectedEquipment.originalId, data);
             } else {
@@ -437,12 +429,24 @@ const Equipment = () => {
                 </div>
             )}
 
-            {/* Save FAB */}
-            {canEdit && isSaving === false && Object.keys(localChanges).length > 0 && (
+            {/* Save / Validate FAB */}
+            {canEdit && isSaving === false && displayData.length > 0 && (
                 <div className="fixed bottom-8 right-8 z-30 animate-bounce-in">
-                    <button className="btn btn-primary shadow-xl py-3 px-6 rounded-full flex items-center gap-3" onClick={handleUpdateAll}>
-                        <Save size={20} />
-                        <span className="font-bold">Save Changes</span>
+                    <button
+                        className={`btn shadow-xl py-3 px-6 rounded-full flex items-center gap-3 ${Object.keys(localChanges).length > 0 ? 'btn-primary' : 'btn-success'}`}
+                        onClick={handleUpdateAll}
+                    >
+                        {Object.keys(localChanges).length > 0 ? (
+                            <>
+                                <Save size={20} />
+                                <span className="font-bold">Save Changes</span>
+                            </>
+                        ) : (
+                            <>
+                                <Check size={20} />
+                                <span className="font-bold">Validate All Statuses</span>
+                            </>
+                        )}
                     </button>
                 </div>
             )}

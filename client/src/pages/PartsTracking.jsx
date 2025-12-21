@@ -136,8 +136,15 @@ const PartsTracking = () => {
                 const shipmentData = {
                     uid: data.uid,
                     deploymentId: parseInt(data.deploymentId) || (currentDeploymentId || 0),
+                    carrier: data.carrier || '',
+                    trackingNumber: data.trackingNumber || '',
                     orderDate: data.orderDate,
-                    status: data.status, // Ordered, Shipped, Received (Host), Received (Site)
+                    shipDate: data.shipDate || null,
+                    hostReceivedDate: data.hostReceivedDate || null,
+                    siteReceivedDate: data.siteReceivedDate || null,
+                    status: (data.siteReceivedDate ? 'Received (Site)' :
+                        data.hostReceivedDate ? 'Received (Host)' :
+                            data.shipDate ? 'Shipped' : 'Ordered'),
                     updatedAt: new Date().toISOString()
                 };
 
@@ -368,8 +375,12 @@ const PartsTracking = () => {
                 <table className="table">
                     <thead>
                         <tr>
-                            <th>UID/Tracking</th>
+                            <th>UID</th>
+                            <th>Carrier / Tracking</th>
                             <th>Order Date</th>
+                            <th>Shipped</th>
+                            <th>Received (Host)</th>
+                            <th>Received (Site)</th>
                             <th>Status</th>
                             <th>Deployment</th>
                             <th>Actions</th>
@@ -379,7 +390,16 @@ const PartsTracking = () => {
                         {shipments.map(s => (
                             <tr key={s.id}>
                                 <td className="font-mono font-bold">{s.uid}</td>
-                                <td>{s.orderDate}</td>
+                                <td>
+                                    <div className="flex flex-col text-xs">
+                                        <span className="font-bold">{s.carrier || '-'}</span>
+                                        <span className="font-mono text-muted">{s.trackingNumber || '-'}</span>
+                                    </div>
+                                </td>
+                                <td>{s.orderDate ? format(new Date(s.orderDate), 'MMM d, yyyy') : '-'}</td>
+                                <td>{s.shipDate ? format(new Date(s.shipDate), 'MMM d, yyyy') : '-'}</td>
+                                <td>{s.hostReceivedDate ? format(new Date(s.hostReceivedDate), 'MMM d, yyyy') : '-'}</td>
+                                <td>{s.siteReceivedDate ? format(new Date(s.siteReceivedDate), 'MMM d, yyyy') : '-'}</td>
                                 <td>
                                     <span className={`badge ${s.status.includes('Received') ? 'badge-success' :
                                         s.status === 'Shipped' ? 'badge-info' : 'badge-warning'
@@ -404,7 +424,7 @@ const PartsTracking = () => {
                         ))}
                         {shipments.length === 0 && (
                             <tr>
-                                <td colSpan="5" className="text-center py-8 text-muted">No shipments found.</td>
+                                <td colSpan="9" className="text-center py-8 text-muted">No shipments found.</td>
                             </tr>
                         )}
                     </tbody>
@@ -412,6 +432,96 @@ const PartsTracking = () => {
             </div>
         </div>
     );
+
+    // --- Import Handlers (Shipment Items) ---
+    const [shipmentImportModalOpen, setShipmentImportModalOpen] = useState(false);
+    const [parsedShipmentItems, setParsedShipmentItems] = useState([]);
+    const shipmentFileInputRef = useRef(null);
+
+    const handleShipmentFileChange = (e) => {
+        if (e.target.files && e.target.files[0]) {
+            handleShipmentFile(e.target.files[0]);
+            e.target.value = null; // Reset
+        }
+    };
+
+    const handleShipmentFile = (file) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+                // Header Detection
+                let headerRowIdx = -1;
+                for (let i = 0; i < Math.min(jsonData.length, 25); i++) {
+                    const row = jsonData[i];
+                    if (!Array.isArray(row)) continue;
+                    const rowStr = row.map(c => String(c).toLowerCase()).join(' ');
+                    if (rowStr.includes('part') && (rowStr.includes('desc') || rowStr.includes('qty'))) {
+                        headerRowIdx = i;
+                        break;
+                    }
+                }
+
+                if (headerRowIdx === -1) {
+                    alert('Could not find header row (looking for Part No, Description, Qty)');
+                    return;
+                }
+
+                const headers = jsonData[headerRowIdx].map(h => String(h).trim().toLowerCase());
+                const rows = jsonData.slice(headerRowIdx + 1);
+
+                const getIdx = (patterns) => {
+                    if (!Array.isArray(patterns)) patterns = [patterns];
+                    return headers.findIndex(h => patterns.some(p => h.includes(p)));
+                };
+
+                const colPart = getIdx(['part no', 'part #', 'p/n', 'part number', 'item']);
+                const colDesc = getIdx(['desc', 'title', 'name']);
+                const colQty = getIdx(['qty', 'quantity', 'count']);
+                const colSerial = getIdx(['s/n', 'serial']);
+
+                if (colPart === -1) {
+                    alert('Could not find Part Number column');
+                    return;
+                }
+
+                const items = rows.map(row => {
+                    let partVal = (row[colPart] !== undefined && row[colPart] !== null) ? String(row[colPart]).trim() : '';
+                    if (!partVal) return null;
+
+                    return {
+                        partNumber: partVal,
+                        description: colDesc !== -1 ? (row[colDesc] || '') : '',
+                        quantity: colQty !== -1 ? (parseInt(row[colQty]) || 1) : 1,
+                        serialNumber: colSerial !== -1 ? (row[colSerial] || '') : ''
+                    };
+                }).filter(Boolean);
+
+                if (items.length === 0) {
+                    alert('No valid items found');
+                    return;
+                }
+
+                setParsedShipmentItems(items);
+                setShipmentImportModalOpen(true);
+            } catch (error) {
+                console.error(error);
+                alert('Error parsing file: ' + error.message);
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    const confirmShipmentImport = () => {
+        setShipmentItems(prev => [...prev, ...parsedShipmentItems]);
+        setShipmentImportModalOpen(false);
+        setParsedShipmentItems([]);
+    };
 
     const renderEditor = () => (
         <div className="card">
@@ -421,36 +531,84 @@ const PartsTracking = () => {
             </div>
             <div className="card-body">
                 <form onSubmit={handleSave}>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                        <div className="form-control">
-                            <label className="label">UID / Tracking #</label>
-                            <input name="uid" defaultValue={currentShipment?.uid} className="input" required placeholder="e.g. SHIP-001" />
+                    <div className="grid grid-cols-1 gap-4 mb-6">
+                        {/* Row 1: Basics */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="form-control">
+                                <label className="label">UID / Reference #</label>
+                                <input name="uid" defaultValue={currentShipment?.uid} className="input" required placeholder="e.g. SHIP-001" />
+                            </div>
+                            <div className="form-control">
+                                <label className="label">Deployment</label>
+                                <select name="deploymentId" defaultValue={currentShipment?.deploymentId || currentDeploymentId || ''} className="select" required>
+                                    <option value="">Select Deployment...</option>
+                                    {deployments.map(d => (
+                                        <option key={d.id} value={d.id}>{d.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-control">
+                                <label className="label">Status (Auto)</label>
+                                <input
+                                    type="text"
+                                    className="input bg-base-200"
+                                    disabled
+                                    value="Determined by dates below"
+                                    title="Status is updated automatically based on the latest date entered."
+                                />
+                            </div>
                         </div>
-                        <div className="form-control">
-                            <label className="label">Order Date</label>
-                            <input type="date" name="orderDate" defaultValue={currentShipment?.orderDate || new Date().toISOString().split('T')[0]} className="input" required />
+
+                        {/* Row 2: Courier Info */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div className="form-control">
+                                <label className="label">Carrier</label>
+                                <input name="carrier" defaultValue={currentShipment?.carrier || ''} className="input" placeholder="e.g. DHL, FedEx, US Transcom" />
+                            </div>
+                            <div className="form-control">
+                                <label className="label">External Tracking Number</label>
+                                <input name="trackingNumber" defaultValue={currentShipment?.trackingNumber || ''} className="input font-mono" placeholder="e.g. 1Z999..." />
+                            </div>
                         </div>
-                        <div className="form-control">
-                            <label className="label">Status</label>
-                            <select name="status" defaultValue={currentShipment?.status || 'Ordered'} className="select">
-                                <option>Ordered</option>
-                                <option>Shipped</option>
-                                <option>Received (Host)</option>
-                                <option>Received (Site)</option>
-                            </select>
-                        </div>
-                        <div className="form-control">
-                            <label className="label">Deployment</label>
-                            <select name="deploymentId" defaultValue={currentShipment?.deploymentId || currentDeploymentId || ''} className="select" required>
-                                <option value="">Select Deployment...</option>
-                                {deployments.map(d => (
-                                    <option key={d.id} value={d.id}>{d.name}</option>
-                                ))}
-                            </select>
+
+                        {/* Row 3: Dates */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-base-200/50 rounded-lg border border-base-300">
+                            <div className="form-control">
+                                <label className="label text-xs font-bold uppercase text-muted">Order Date</label>
+                                <input type="date" name="orderDate" defaultValue={currentShipment?.orderDate || new Date().toISOString().split('T')[0]} className="input input-sm" required />
+                            </div>
+                            <div className="form-control">
+                                <label className="label text-xs font-bold uppercase text-info">Shipped Date</label>
+                                <input type="date" name="shipDate" defaultValue={currentShipment?.shipDate || ''} className="input input-sm" />
+                            </div>
+                            <div className="form-control">
+                                <label className="label text-xs font-bold uppercase text-warning">Rcvd (Host)</label>
+                                <input type="date" name="hostReceivedDate" defaultValue={currentShipment?.hostReceivedDate || ''} className="input input-sm" />
+                            </div>
+                            <div className="form-control">
+                                <label className="label text-xs font-bold uppercase text-success">Rcvd (Site)</label>
+                                <input type="date" name="siteReceivedDate" defaultValue={currentShipment?.siteReceivedDate || ''} className="input input-sm" />
+                            </div>
                         </div>
                     </div>
 
                     <div className="divider">Items</div>
+
+                    <div className="flex items-center justify-end gap-3 mb-2 flex-wrap">
+                        <span className="text-xs text-muted">
+                            Required Columns: <strong>Part Number</strong>, <strong>Description</strong>, <strong>Qty</strong>
+                        </span>
+                        <button type="button" className="btn btn-sm btn-ghost gap-2 w-auto" onClick={() => shipmentFileInputRef.current?.click()}>
+                            <Upload size={14} /> Import from Excel
+                        </button>
+                        <input
+                            type="file"
+                            ref={shipmentFileInputRef}
+                            onChange={handleShipmentFileChange}
+                            className="hidden"
+                            accept=".xlsx, .xls, .csv"
+                        />
+                    </div>
 
                     <div className="space-y-2 mb-6">
                         {shipmentItems.map((item, idx) => (
@@ -503,6 +661,33 @@ const PartsTracking = () => {
                         <button type="submit" className="btn btn-primary">Save Shipment</button>
                     </div>
                 </form>
+
+                {/* Import Confirmation Modal */}
+                <Modal
+                    isOpen={shipmentImportModalOpen}
+                    onClose={() => setShipmentImportModalOpen(false)}
+                    title="Import Shipment Items"
+                >
+                    <div className="p-4">
+                        <p className="mb-4">Found {parsedShipmentItems.length} items to import:</p>
+                        <div className="max-h-60 overflow-y-auto bg-base-200 p-2 rounded mb-4 text-xs font-mono">
+                            {parsedShipmentItems.slice(0, 50).map((i, idx) => (
+                                <div key={idx} className="grid grid-cols-12 gap-2 border-b border-base-300 py-1">
+                                    <span className="col-span-4 truncate font-bold">{i.partNumber}</span>
+                                    <span className="col-span-6 truncate opacity-70">{i.description}</span>
+                                    <span className="col-span-2 text-right">{i.quantity}</span>
+                                </div>
+                            ))}
+                            {parsedShipmentItems.length > 50 && (
+                                <div className="text-center italic mt-2">...and {parsedShipmentItems.length - 50} more</div>
+                            )}
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <button className="btn btn-ghost" onClick={() => setShipmentImportModalOpen(false)}>Cancel</button>
+                            <button className="btn btn-primary" onClick={confirmShipmentImport}>Add to Shipment</button>
+                        </div>
+                    </div>
+                </Modal>
             </div>
         </div>
     );

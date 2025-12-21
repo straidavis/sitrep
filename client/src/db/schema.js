@@ -27,7 +27,7 @@ db.version(201).stores({
     kits: '++id, name, version, deploymentId, createdAt',
     kitItems: '++id, kitId, partNumber, description, quantity, category, serialNumber, actualQuantity',
     inventoryItems: '++id, deploymentId, partNumber, description, quantity, category, location, notes, createdAt, updatedAt',
-    shipments: '++id, uid, deploymentId, orderDate, shipDate, hostReceivedDate, siteReceivedDate, status, createdAt',
+    shipments: '++id, uid, deploymentId, orderDate, shipDate, hostReceivedDate, siteReceivedDate, carrier, trackingNumber, status, createdAt',
     shipmentItems: '++id, shipmentId, partNumber, description, quantity, serialNumber, isNewItem, receivedDate',
     accessRequests: '++id, email, name, status, requestedAt', // status: 'Pending', 'Approved', 'Denied'
     partsUtilization: '++id, deploymentId, partNumber, description, quantity, type, date, createdAt' // type: 'Scheduled', 'Unscheduled'

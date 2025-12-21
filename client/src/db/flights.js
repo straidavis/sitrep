@@ -188,44 +188,62 @@ export const getFlightStats = async (deploymentIds = null) => {
         }, {});
 
         // --- New MRR Logic ---
-        // S = Successful Flights (Status: 'Complete')
-        // F = Failures (Status: 'CNX') caused by Shield AI
-        // Other cancellations are ignored.
+        // Numerator (S) = Status 'Complete' OR 'Delay'
+        // Denominator (D) = Total Scheduled - (CNX where Party != 'Shield AI') - ('Alert - No Launch')
+        // MRR = S / D
+
         const importConstants = await import('../utils/constants'); // Dynamic import
         const getResponsibleParty = importConstants.getResponsibleParty;
 
-        let S = 0;
-        let F = 0;
+        let S = 0; // Successes (Complete + Delay)
+        let D = 0; // Denominator (Total Relevant Attempts)
 
         flights.forEach(f => {
-            const status = f.status ? f.status.trim().toLowerCase() : '';
+            const status = f.status ? f.status.trim() : '';
 
-            if (status === 'complete') {
+            // Skip 'Alert - No Launch' entirely
+            if (status === 'Alert - No Launch') return;
+
+            // Determine Responsible Party
+            let party = f.responsibleParty;
+            if (!party && f.reasonForDelay) {
+                party = getResponsibleParty(f.reasonForDelay);
+            }
+
+            if (status === 'Complete' || status === 'Delay') {
                 S++;
-            } else if (status === 'cnx' || status === 'cancelled') {
-                // Determine responsible party
-                // If f.responsibleParty is saved, use it. Else lookup via reason.
-                let party = f.responsibleParty;
-                if (!party && f.reasonForDelay) {
-                    party = getResponsibleParty(f.reasonForDelay);
-                }
-
-                // Strict check for 'Shield AI'
+                D++;
+            } else if (status === 'CNX' || status === 'Cancelled') {
                 if (party === 'Shield AI') {
-                    F++;
+                    // Shield AI Fault -> Count in Denominator (Failure)
+                    D++;
+                } else {
+                    // Other Fault -> Exclude from Denominator
                 }
+            } else {
+                // Any other status? Assuming they count as scheduled unless explicitly excluded.
+                // Current statuses: Complete, Delay, CNX, Alert - No Launch.
+                // If there's an old 'Alert' status, treat it as excluded too?
+                // User only specified 'Alert - No Launch'. I'll exclude legacy 'Alert' too to be safe.
+                if (status === 'Alert') return;
+
+                // If unknown status, maybe count in denominator? 
+                // Let's stick to known knowns.
             }
         });
 
         // MRR
-        const totalRelevant = S + F;
-        const currentMRR = totalRelevant > 0 ? (S / totalRelevant) * 100 : 100;
+        const currentMRR = D > 0 ? (S / D) * 100 : 100;
 
         // Flights required to reach 95% MRR
-        // Formula: x >= (0.95(S+F) - S) / (1 - 0.95)
+        // Formula: Let x be additional successes.
+        // (S + x) / (D + x) >= 0.95
+        // S + x >= 0.95D + 0.95x
+        // 0.05x >= 0.95D - S
+        // x >= (0.95D - S) / 0.05
         let flightsTo95 = 0;
         if (currentMRR < 95) {
-            const numerator = (0.95 * totalRelevant) - S;
+            const numerator = (0.95 * D) - S;
             const res = numerator / 0.05;
             flightsTo95 = Math.ceil(res);
             if (flightsTo95 < 0) flightsTo95 = 0;
@@ -237,7 +255,7 @@ export const getFlightStats = async (deploymentIds = null) => {
             byStatus,
             missionReliability: currentMRR,
             flightsTo95MRR: flightsTo95,
-            debug: { S, F, totalRelevant }
+            debug: { S, D }
         };
     } catch (error) {
         console.error('Error getting flight stats:', error);

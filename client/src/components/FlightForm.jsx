@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Save, X } from 'lucide-react';
+import { getAllFlights } from '../db/flights';
 import { getAllEquipment } from '../db/equipment';
 import { getAllDeployments } from '../db/deployments';
 import { useDeployment } from '../context/DeploymentContext';
 import { useAuth } from '../context/AuthContext';
 
-import { WEATHER_OPTIONS, CANCELLATION_CRITERIA, getResponsibleParty } from '../utils/constants';
+import { CANCELLATION_CRITERIA, getResponsibleParty } from '../utils/constants';
 
 const FlightForm = ({ flight, onSave, onCancel }) => {
     // Get global context for auto-fill logic
@@ -30,11 +31,8 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
         payload3: '',
         reasonForDelay: '',
         responsibleParty: '', // Added field
-        weather: '',
-        winds: '',
-        oat: '',
-        riskLevel: 'Low',
-        reasonForRisk: '',
+        windsLaunch: '',
+        windsRecovery: '',
         tois: '',
         notes: ''
     });
@@ -46,8 +44,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
     const [payloadList, setPayloadList] = useState([]);
     const [deployments, setDeployments] = useState([]);
 
-    const statuses = ['Complete', 'CNX', 'Delay', 'Alert'];
-    const riskLevels = ['Low', 'Med', 'High'];
+    const statuses = ['Complete', 'CNX', 'Delay', 'Alert - No Launch'];
 
     useEffect(() => {
         loadEquipment();
@@ -74,11 +71,8 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                 payload3: flight.payload3 || '',
                 reasonForDelay: flight.reasonForDelay || '',
                 responsibleParty: flight.responsibleParty || '',
-                weather: flight.weather || '',
-                winds: flight.winds || '',
-                oat: flight.oat || '',
-                riskLevel: flight.riskLevel || 'Low',
-                reasonForRisk: flight.reasonForRisk || '',
+                windsLaunch: flight.windsLaunch || '', // New field
+                windsRecovery: flight.windsRecovery || flight.winds || '', // Renamed field, default to old winds if valid
                 tois: flight.tois || '',
                 notes: flight.notes || ''
             });
@@ -110,28 +104,79 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
     useEffect(() => {
         // Format: upto 3 digits, @, upto 3 digits. e.g. 120@15
         const windsRegex = /^\d{1,3}@\d{1,3}$/;
-        if (formData.winds && !windsRegex.test(formData.winds)) {
-            setWarnings(prev => ({ ...prev, winds: 'Format should be like 120@15 (Direction@Speed)' }));
-        } else {
-            setWarnings(prev => {
-                const newWarnings = { ...prev };
-                delete newWarnings.winds;
-                return newWarnings;
-            });
-        }
-    }, [formData.winds]);
 
-    // Auto-generate mission number when date and aircraft change
+        setWarnings(prev => {
+            const next = { ...prev };
+
+            // Validate Launch Winds
+            if (formData.windsLaunch && !windsRegex.test(formData.windsLaunch)) {
+                next.windsLaunch = 'Launch: Format 120@15';
+            } else {
+                delete next.windsLaunch;
+            }
+
+            // Validate Recovery Winds
+            if (formData.windsRecovery && !windsRegex.test(formData.windsRecovery)) {
+                next.windsRecovery = 'Recovery: Format 120@15';
+            } else {
+                delete next.windsRecovery;
+            }
+
+            return next;
+        });
+    }, [formData.windsLaunch, formData.windsRecovery]);
+
+    // Auto-generate mission number: YYYYMMDD_##
     useEffect(() => {
-        if (formData.date && formData.aircraftNumber && !flight) {
-            const dateObj = new Date(formData.date);
-            const yy = dateObj.getFullYear().toString().slice(-2);
-            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const dd = String(dateObj.getDate()).padStart(2, '0');
-            const missionNum = `${yy}${mm}${dd}_${formData.aircraftNumber}`;
-            setFormData(prev => ({ ...prev, missionNumber: missionNum }));
-        }
-    }, [formData.date, formData.aircraftNumber, flight]);
+        const generateMissionNumber = async () => {
+            if (formData.date && !flight) {
+                // Avoid timezone issues by parsing string directly (YYYY-MM-DD)
+                const [year, month, day] = formData.date.split('-');
+                const yy = year.slice(-2);
+
+                let prefix = `${yy}${month}${day}`;
+
+                // If Complete or Delayed, append Aircraft Serial to prefix
+                if (['Complete', 'Delay'].includes(formData.status) && formData.aircraftNumber) {
+                    prefix = `${prefix}_${formData.aircraftNumber}`;
+                }
+
+                try {
+                    // Fetch all flights to find duplicates for this day
+                    const allFlights = await getAllFlights({ startDate: formData.date, endDate: formData.date });
+
+                    // Filter flights that match the prefix
+                    // This logic assumes we rely on DB for uniqueness. 
+                    // If multiple users are adding, conflicts might occur on save, but this gives a good starting point.
+                    // We look for any existing mission number starting with prefix
+                    const existingSuffixes = allFlights
+                        .map(f => f.missionNumber)
+                        .filter(num => num && num.startsWith(prefix + '_'))
+                        .map(num => {
+                            const parts = num.split('_');
+                            return parseInt(parts[parts.length - 1]); // Last part is the counter
+                        })
+                        .filter(n => !isNaN(n));
+
+                    let nextSuffix = 0;
+                    if (existingSuffixes.length > 0) {
+                        nextSuffix = Math.max(...existingSuffixes) + 1;
+                    }
+
+                    const suffixStr = String(nextSuffix).padStart(2, '0');
+                    const missionNum = `${prefix}_${suffixStr}`;
+
+                    // Only update if it changed to avoid loops, though check dependency is date
+                    setFormData(prev => ({ ...prev, missionNumber: missionNum }));
+
+                } catch (error) {
+                    console.error("Error generating mission number", error);
+                }
+            }
+        };
+
+        generateMissionNumber();
+    }, [formData.date, formData.status, formData.aircraftNumber, flight]);
 
     // Auto-calculate hours when launch and recovery times change
     useEffect(() => {
@@ -210,7 +255,27 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => {
+            const next = { ...prev, [name]: value };
+
+            // Clear fields if Alert - No Launch or CNX
+            if (name === 'status' && (value === 'Alert - No Launch' || value === 'CNX')) {
+                next.launchTime = '';
+                next.recoveryTime = '';
+                next.hours = '0.0';
+                next.aircraftNumber = '';
+                next.launcher = '';
+                next.numberOfLaunches = 1;
+                next.payload1 = '';
+                next.payload2 = '';
+                next.payload3 = '';
+                next.windsLaunch = '';
+                next.windsRecovery = '';
+                next.tois = '';
+            }
+
+            return next;
+        });
         // Clear error for this field
         if (errors[name]) {
             setErrors(prev => ({ ...prev, [name]: '' }));
@@ -221,14 +286,31 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
         const newErrors = {};
 
         if (!formData.date) newErrors.date = 'Date is required';
-        if (!formData.aircraftNumber) newErrors.aircraftNumber = 'Aircraft number is required';
         if (!formData.deploymentId) newErrors.deploymentId = 'Deployment is required';
 
-        // Payloads Mandatory (at least one payload?) User said "payloads" plural. Assuming Payload 1 is mandatory field.
-        if (!formData.payload1) newErrors.payload1 = 'Primary Payload is required';
+        // Conditional Validation: Aircraft, Payload, TOIs are NOT required for CNX or Alert
+        const isNotFlown = ['CNX', 'Alert - No Launch'].includes(formData.status);
 
-        if (formData.tois === '' || formData.tois === null || formData.tois === undefined) {
-            newErrors.tois = 'TOIs count is required';
+        if (!isNotFlown) {
+            if (!formData.aircraftNumber) newErrors.aircraftNumber = 'Aircraft number is required';
+            if (!formData.payload1) newErrors.payload1 = 'Primary Payload is required';
+            if (formData.tois === '' || formData.tois === null || formData.tois === undefined) {
+                newErrors.tois = 'TOIs count is required';
+            }
+        }
+
+        // Require Reason if CNX or Delay
+        if (['CNX', 'Delay'].includes(formData.status)) {
+            if (!formData.reasonForDelay) {
+                newErrors.reasonForDelay = 'Reason is required';
+            }
+        }
+
+        // Require Times if Status is Complete
+        if (formData.status === 'Complete') {
+            if (!formData.scheduledLaunchTime) newErrors.scheduledLaunchTime = 'Required';
+            if (!formData.launchTime) newErrors.launchTime = 'Required';
+            if (!formData.recoveryTime) newErrors.recoveryTime = 'Required';
         }
 
         setErrors(newErrors);
@@ -258,11 +340,8 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
             payload3: formData.payload3,
             reasonForDelay: formData.reasonForDelay,
             responsibleParty: formData.responsibleParty, // Save this!
-            weather: formData.weather,
-            winds: formData.winds,
-            oat: parseInt(formData.oat) || 0,
-            riskLevel: formData.riskLevel,
-            reasonForRisk: formData.reasonForRisk,
+            windsLaunch: formData.windsLaunch,
+            windsRecovery: formData.windsRecovery,
             tois: parseInt(formData.tois) || 0,
             notes: formData.notes
         };
@@ -319,13 +398,13 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
 
                 {/* Aircraft Number */}
                 <div className="form-group">
-                    <label className="form-label">Aircraft # *</label>
+                    <label className="form-label">Aircraft # {(!['CNX', 'Alert - No Launch'].includes(formData.status)) && '*'}</label>
                     <select
                         name="aircraftNumber"
                         className="select"
                         value={formData.aircraftNumber}
                         onChange={handleChange}
-                        disabled={!canEdit}
+                        disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
                     >
                         <option value="">Select Aircraft S/N</option>
                         {aircraftList.map(item => (
@@ -343,7 +422,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                         className="select"
                         value={formData.launcher}
                         onChange={handleChange}
-                        disabled={!canEdit}
+                        disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
                     >
                         <option value="">Select Launcher S/N</option>
                         {launcherList.map(item => (
@@ -360,7 +439,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                         className="select"
                         value={formData.numberOfLaunches}
                         onChange={handleChange}
-                        disabled={!canEdit}
+                        disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
                     >
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
                             <option key={num} value={num}>{num}</option>
@@ -395,7 +474,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
 
                 {/* Scheduled Launch Time */}
                 <div className="form-group">
-                    <label className="form-label">Scheduled Launch</label>
+                    <label className="form-label">Scheduled Launch {(formData.status === 'Complete') && '*'}</label>
                     <input
                         type="time"
                         name="scheduledLaunchTime"
@@ -404,32 +483,36 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                         onChange={handleChange}
                         disabled={!canEdit}
                     />
+                    {errors.scheduledLaunchTime && <span className="form-error">{errors.scheduledLaunchTime}</span>}
                 </div>
 
                 {/* Launch Time */}
+                {/* Launch Time */}
                 <div className="form-group">
-                    <label className="form-label">Launch Time</label>
+                    <label className="form-label">Launch Time {(formData.status === 'Complete') && '*'}</label>
                     <input
-                        type="time"
+                        type={['Alert - No Launch', 'CNX'].includes(formData.status) ? "text" : "time"}
                         name="launchTime"
                         className="input"
-                        value={formData.launchTime}
+                        value={['Alert - No Launch', 'CNX'].includes(formData.status) ? "N/A" : formData.launchTime}
                         onChange={handleChange}
-                        disabled={!canEdit}
+                        disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
                     />
+                    {errors.launchTime && <span className="form-error">{errors.launchTime}</span>}
                 </div>
 
                 {/* Recovery Time */}
                 <div className="form-group">
-                    <label className="form-label">Recovery Time</label>
+                    <label className="form-label">Recovery Time {(formData.status === 'Complete') && '*'}</label>
                     <input
-                        type="time"
+                        type={['Alert - No Launch', 'CNX'].includes(formData.status) ? "text" : "time"}
                         name="recoveryTime"
                         className="input"
-                        value={formData.recoveryTime}
+                        value={['Alert - No Launch', 'CNX'].includes(formData.status) ? "N/A" : formData.recoveryTime}
                         onChange={handleChange}
-                        disabled={!canEdit}
+                        disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
                     />
+                    {errors.recoveryTime && <span className="form-error">{errors.recoveryTime}</span>}
                 </div>
 
                 {/* Hours (Auto-calculated) */}
@@ -447,21 +530,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                     />
                 </div>
 
-                {/* Risk Level */}
-                <div className="form-group">
-                    <label className="form-label">Risk Level</label>
-                    <select
-                        name="riskLevel"
-                        className="select"
-                        value={formData.riskLevel}
-                        onChange={handleChange}
-                        disabled={!canEdit}
-                    >
-                        {riskLevels.map(level => (
-                            <option key={level} value={level}>{level}</option>
-                        ))}
-                    </select>
-                </div>
+
             </div>
 
             {/* Payloads Section */}
@@ -477,13 +546,13 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                 </h4>
                 <div className="grid grid-cols-3" style={{ gap: 'var(--spacing-md)' }}>
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label">Payload 1 *</label>
+                        <label className="form-label">Payload 1 {(!['CNX', 'Alert - No Launch'].includes(formData.status)) && '*'}</label>
                         <select
                             name="payload1"
                             className="select"
                             value={formData.payload1}
                             onChange={handleChange}
-                            disabled={!canEdit}
+                            disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
                         >
                             <option value="">Select Payload S/N</option>
                             {payloadList.map(item => (
@@ -500,7 +569,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                             className="select"
                             value={formData.payload2}
                             onChange={handleChange}
-                            disabled={!canEdit}
+                            disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
                         >
                             <option value="">Select Payload S/N</option>
                             {payloadList.map(item => (
@@ -516,7 +585,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                             className="select"
                             value={formData.payload3}
                             onChange={handleChange}
-                            disabled={!canEdit}
+                            disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
                         >
                             <option value="">Select Payload S/N</option>
                             {payloadList.map(item => (
@@ -530,7 +599,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
             {/* Reason for Cancel, Abort or Delay */}
             <div className="grid grid-cols-2" style={{ gap: 'var(--spacing-lg)' }}>
                 <div className="form-group">
-                    <label className="form-label">REASON for Cancel, Abort or Delay</label>
+                    <label className="form-label">REASON for Cancel, Abort or Delay {(['CNX', 'Delay'].includes(formData.status)) && '*'}</label>
                     <select
                         name="reasonForDelay"
                         className="select"
@@ -543,6 +612,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                             <option key={idx} value={item.label}>{item.label}</option>
                         ))}
                     </select>
+                    {errors.reasonForDelay && <span className="form-error">{errors.reasonForDelay}</span>}
                 </div>
                 <div className="form-group">
                     <label className="form-label">Responsible Party</label>
@@ -556,73 +626,50 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                 </div>
             </div>
 
-            {/* Weather Conditions Section */}
-            <div className="grid grid-cols-3" style={{ gap: 'var(--spacing-lg)' }}>
+            {/* Winds Section */}
+            <div className="grid grid-cols-2" style={{ gap: 'var(--spacing-lg)' }}>
                 <div className="form-group">
-                    <label className="form-label">Weather</label>
-                    <select
-                        name="weather"
-                        className="select"
-                        value={formData.weather}
-                        onChange={handleChange}
-                        disabled={!canEdit}
-                    >
-                        <option value="">Select Weather Conditions...</option>
-                        {WEATHER_OPTIONS.map((item, idx) => (
-                            <option key={idx} value={item}>{item}</option>
-                        ))}
-                    </select>
-                </div>
-
-                <div className="form-group">
-                    <label className="form-label">Winds</label>
+                    <label className="form-label">Winds at launch</label>
                     <input
                         type="text"
-                        name="winds"
+                        name="windsLaunch"
                         className="input"
                         placeholder="e.g., 120@15"
-                        value={formData.winds}
+                        value={formData.windsLaunch}
                         onChange={handleChange}
-                        disabled={!canEdit}
+                        disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
                     />
-                    {warnings.winds && (
+                    {warnings.windsLaunch && (
                         <span className="form-error text-warning" style={{ color: 'var(--color-warning)' }}>
-                            {warnings.winds}
+                            {warnings.windsLaunch}
                         </span>
                     )}
                 </div>
 
                 <div className="form-group">
-                    <label className="form-label">OAT (°F)</label>
+                    <label className="form-label">Winds at recovery</label>
                     <input
-                        type="number"
-                        name="oat"
+                        type="text"
+                        name="windsRecovery"
                         className="input"
-                        placeholder="e.g., 72"
-                        value={formData.oat}
+                        placeholder="e.g., 120@15"
+                        value={formData.windsRecovery}
                         onChange={handleChange}
-                        disabled={!canEdit}
+                        disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
                     />
+                    {warnings.windsRecovery && (
+                        <span className="form-error text-warning" style={{ color: 'var(--color-warning)' }}>
+                            {warnings.windsRecovery}
+                        </span>
+                    )}
                 </div>
             </div>
 
-            {/* Reason for Elevated Risk */}
-            <div className="form-group">
-                <label className="form-label">Reason for Elevated Risk</label>
-                <input
-                    type="text"
-                    name="reasonForRisk"
-                    className="input"
-                    placeholder="Enter reason if risk is elevated"
-                    value={formData.reasonForRisk}
-                    onChange={handleChange}
-                    disabled={!canEdit}
-                />
-            </div>
+
 
             {/* TOIs */}
             <div className="form-group">
-                <label className="form-label">TOIs *</label>
+                <label className="form-label">TOIs {(!['CNX', 'Alert - No Launch'].includes(formData.status)) && '*'}</label>
                 <input
                     type="number"
                     name="tois"
@@ -630,7 +677,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                     placeholder="Enter number of TOIs"
                     value={formData.tois}
                     onChange={handleChange}
-                    disabled={!canEdit}
+                    disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
                 />
                 {errors.tois && <span className="form-error">{errors.tois}</span>}
             </div>

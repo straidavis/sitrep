@@ -12,6 +12,7 @@ import {
 import { format } from 'date-fns';
 import { useDeployment } from '../context/DeploymentContext';
 import { useAuth } from '../context/AuthContext';
+import { getResponsibleParty } from '../utils/constants';
 
 const Flights = () => {
     const { canEdit } = useAuth();
@@ -22,7 +23,7 @@ const Flights = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({
         status: '',
-        riskLevel: '',
+
         startDate: '',
         endDate: ''
     });
@@ -87,9 +88,7 @@ const Flights = () => {
         }
 
         // Risk level filter
-        if (filters.riskLevel) {
-            filtered = filtered.filter(f => f.riskLevel === filters.riskLevel);
-        }
+
 
         // Date range filter
         if (filters.startDate) {
@@ -335,7 +334,6 @@ const Flights = () => {
     const clearFilters = () => {
         setFilters({
             status: '',
-            riskLevel: '',
             startDate: '',
             endDate: ''
         });
@@ -347,7 +345,8 @@ const Flights = () => {
             case 'Complete': return 'badge-success';
             case 'CNX': return 'badge-error';
             case 'Delay': return 'badge-warning';
-            case 'Alert': return 'badge-info';
+            case 'Alert':
+            case 'Alert - No Launch': return 'badge-info';
             default: return 'badge-info';
         }
     };
@@ -369,10 +368,20 @@ const Flights = () => {
         );
     }
 
+    const getResponsiblePartyText = (flight) => {
+        if (flight.status === 'Complete') return 'N/A';
+
+        let party = flight.responsibleParty;
+        if (!party && flight.reasonForDelay) {
+            party = getResponsibleParty(flight.reasonForDelay);
+        }
+        return party || '-';
+    };
+
     return (
         <div>
             <div className="page-header">
-                <h1 className="page-title">Flights (AMCR)</h1>
+                <h1 className="page-title">Flights</h1>
                 <p className="page-description">
                     Manage flight operations and situation reports
                 </p>
@@ -456,24 +465,11 @@ const Flights = () => {
                                     <option value="Complete">Complete</option>
                                     <option value="CNX">CNX</option>
                                     <option value="Delay">Delay</option>
-                                    <option value="Alert">Alert</option>
+                                    <option value="Alert - No Launch">Alert - No Launch</option>
                                 </select>
                             </div>
 
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label className="form-label">Risk Level</label>
-                                <select
-                                    name="riskLevel"
-                                    className="select"
-                                    value={filters.riskLevel}
-                                    onChange={handleFilterChange}
-                                >
-                                    <option value="">All Levels</option>
-                                    <option value="Low">Low</option>
-                                    <option value="Med">Med</option>
-                                    <option value="High">High</option>
-                                </select>
-                            </div>
+
 
                             <div className="form-group" style={{ marginBottom: 0 }}>
                                 <label className="form-label">Start Date</label>
@@ -530,7 +526,7 @@ const Flights = () => {
                                 <th>Launch</th>
                                 <th>Recovery</th>
                                 <th>Hours</th>
-                                <th>Risk</th>
+                                <th>Resp. Party</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -556,11 +552,22 @@ const Flights = () => {
                                         <td>{flight.launchTime || '-'}</td>
                                         <td>{flight.recoveryTime || '-'}</td>
                                         <td>{flight.hours?.toFixed(1) || '0.0'}</td>
+
                                         <td>
-                                            <span className={`badge ${getRiskBadgeClass(flight.riskLevel)}`}>
-                                                {flight.riskLevel}
-                                            </span>
+                                            {(() => {
+                                                const party = getResponsiblePartyText(flight);
+                                                const isShieldAI = party === 'Shield AI';
+                                                return (
+                                                    <span style={{
+                                                        color: isShieldAI ? 'var(--color-error)' : 'inherit',
+                                                        fontWeight: isShieldAI ? 'bold' : 'normal'
+                                                    }}>
+                                                        {party}
+                                                    </span>
+                                                );
+                                            })()}
                                         </td>
+
                                         <td>
                                             <span className={`badge ${getStatusBadgeClass(flight.status)}`}>
                                                 {flight.status}
