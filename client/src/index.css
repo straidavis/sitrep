@@ -1067,6 +1067,24 @@ code {
   .main-content {
     padding: var(--spacing-lg);
   }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 40;
+    /* Below sidebar (50) */
+    animation: fadeIn 0.2s ease-in-out;
+  }
+}
+
+.sidebar-backdrop {
+  display: none;
 }
 
 @media (max-width: 768px) {
@@ -1449,6 +1467,108 @@ code {
 .btn-icon:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* === Deployment Selector Responsive Styles === */
+.deployment-selector-container {
+  min-width: 280px;
+}
+
+.deployment-trigger {
+  width: 100%;
+  background-color: var(--color-bg-secondary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+}
+
+.deployment-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+.deployment-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-top: 4px;
+  z-index: 100;
+  box-shadow: var(--shadow-lg);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.deployment-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.2s;
+}
+
+.deployment-item:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+.deployment-item.selected {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+.deployment-item.inactive {
+  opacity: 0.5;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  flex-shrink: 0;
+}
+
+.checkbox.checked {
+  background-color: var(--color-accent-primary);
+  border-color: var(--color-accent-primary);
+}
+
+@media (max-width: 768px) {
+  .deployment-selector-container {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .deployment-label {
+    max-width: 120px;
+  }
+
+  .deployment-dropdown {
+    position: fixed;
+    /* Fixed on mobile to ensure visibility */
+    top: 60px;
+    /* Below header roughly */
+    left: var(--spacing-md);
+    right: var(--spacing-md);
+    max-height: 60vh;
+  }
+}
+
+/* === Fix: Dynamic Viewport Height for Mobile === */
+.app-layout {
+  min-height: 100vh;
+  min-height: 100dvh;
+  /* Use dynamic viewport height if supported */
 }
 
 /* Animations */

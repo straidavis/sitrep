@@ -35,7 +35,8 @@ import Modal from './Modal';
 
 const Layout = ({ children }) => {
     const location = useLocation();
-    const [sidebarOpen, setSidebarOpen] = useState(true);
+    // Default to closed on mobile (< 768px), open on desktop
+    const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
     const dropdownRef = useRef(null);
@@ -192,45 +193,19 @@ const Layout = ({ children }) => {
 
                     <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-lg)' }}>
                         {/* Global Deployment Selector */}
-                        <div className="relative" style={{ minWidth: '280px' }} ref={dropdownRef}>
+                        <div className="relative deployment-selector-container" ref={dropdownRef}>
                             <button
-                                className="select"
+                                className="select deployment-trigger"
                                 onClick={() => setDropdownOpen(!dropdownOpen)}
-                                style={{
-                                    width: '100%',
-                                    backgroundColor: 'var(--color-bg-secondary)',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    textAlign: 'left'
-                                }}
                             >
-                                <span style={{
-                                    whiteWhiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    maxWidth: '240px'
-                                }}>
+                                <span className="deployment-label">
                                     {getDisplayText()}
                                 </span>
                                 <ChevronDown size={16} />
                             </button>
 
                             {dropdownOpen && (
-                                <div style={{
-                                    position: 'absolute',
-                                    top: '100%',
-                                    left: 0,
-                                    right: 0,
-                                    backgroundColor: 'var(--color-bg-secondary)',
-                                    border: '1px solid var(--color-border)',
-                                    borderRadius: 'var(--radius-md)',
-                                    marginTop: '4px',
-                                    zIndex: 100,
-                                    boxShadow: 'var(--shadow-lg)',
-                                    maxHeight: '400px',
-                                    overflowY: 'auto'
-                                }}>
+                                <div className="deployment-dropdown">
                                     <div style={{ padding: '8px', borderBottom: '1px solid var(--color-border)' }}>
                                         <button
                                             className="btn btn-sm btn-ghost w-full text-left mb-1"
@@ -251,7 +226,7 @@ const Layout = ({ children }) => {
                                             Clear Selection
                                         </button>
                                     </div>
-                                    <div style={{ padding: '8px 0' }}>
+                                    <div style={{ padding: '8px 0', maxHeight: '40vh', overflowY: 'auto' }}>
                                         {deployments.map(deployment => {
                                             const isSelected = selectedDeploymentIds.includes(deployment.id);
                                             const isInactive = ['Completed', 'Cancelled'].includes(deployment.status);
@@ -260,34 +235,14 @@ const Layout = ({ children }) => {
                                                 <div
                                                     key={deployment.id}
                                                     onClick={() => toggleDeployment(deployment.id)}
-                                                    style={{
-                                                        padding: '8px 16px',
-                                                        cursor: 'pointer',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px',
-                                                        opacity: isInactive ? 0.5 : 1,
-                                                        backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.1)' : 'transparent',
-                                                        transition: 'background-color 0.2s'
-                                                    }}
-                                                    className="hover:bg-tertiary"
+                                                    className={`deployment-item ${isSelected ? 'selected' : ''} ${isInactive ? 'inactive' : ''}`}
                                                 >
-                                                    <div style={{
-                                                        width: '16px',
-                                                        height: '16px',
-                                                        border: '1px solid var(--color-border)',
-                                                        borderRadius: '4px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        backgroundColor: isSelected ? 'var(--color-primary)' : 'transparent',
-                                                        borderColor: isSelected ? 'var(--color-primary)' : 'var(--color-border)'
-                                                    }}>
+                                                    <div className={`checkbox ${isSelected ? 'checked' : ''}`}>
                                                         {isSelected && <Check size={12} color="white" />}
                                                     </div>
-                                                    <div>
-                                                        <div style={{ fontWeight: 500 }}>{deployment.name}</div>
-                                                        <div style={{ fontSize: '0.8em', color: 'var(--color-text-muted)' }}>
+                                                    <div className="flex-1 overflow-hidden">
+                                                        <div className="truncate font-medium">{deployment.name}</div>
+                                                        <div className="text-xs text-muted truncate">
                                                             {deployment.location} • {deployment.status}
                                                         </div>
                                                     </div>
@@ -362,6 +317,9 @@ const Layout = ({ children }) => {
                                     key={item.path}
                                     to={item.path}
                                     className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
+                                    onClick={() => {
+                                        if (window.innerWidth < 768) setSidebarOpen(false);
+                                    }}
                                 >
                                     <Icon size={20} />
                                     <span className="nav-label flex-1">{item.label}</span>
@@ -375,6 +333,14 @@ const Layout = ({ children }) => {
 
 
                 </aside>
+
+                {/* Mobile Sidebar Backdrop */}
+                {sidebarOpen && (
+                    <div
+                        className="sidebar-backdrop"
+                        onClick={() => setSidebarOpen(false)}
+                    />
+                )}
 
                 {/* Main Content */}
                 <main className="app-main">
