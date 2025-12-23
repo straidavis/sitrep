@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 const Inventory = () => {
-    const { canEdit } = useAuth();
+    const { canEdit, user } = useAuth();
     const { selectedDeploymentIds, deployments } = useDeployment();
 
     // State
@@ -217,6 +217,25 @@ const Inventory = () => {
         }
     };
 
+    const handleTableKeyDown = (e) => {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') {
+            e.preventDefault();
+            const inputs = Array.from(document.querySelectorAll('.inventory-qty-input:not([disabled])'));
+            const index = inputs.indexOf(e.target);
+
+            if (index !== -1) {
+                let nextIndex = index;
+                if (e.key === 'ArrowUp') nextIndex = Math.max(0, index - 1);
+                if (e.key === 'ArrowDown' || e.key === 'Enter') nextIndex = Math.min(inputs.length - 1, index + 1);
+
+                if (nextIndex !== index) {
+                    inputs[nextIndex].focus();
+                    inputs[nextIndex].select();
+                }
+            }
+        }
+    };
+
     const handleExport = () => {
         try {
             const data = [];
@@ -321,7 +340,10 @@ const Inventory = () => {
                     }
 
                     remaining = Math.max(0, remaining - target);
-                    return db.kitItems.update(item.id, { actualQuantity: target });
+                    return db.kitItems.update(item.id, {
+                        actualQuantity: target,
+                        lastUpdatedBy: user?.name || 'Unknown'
+                    });
                 });
 
                 return Promise.all(updates);
@@ -329,7 +351,10 @@ const Inventory = () => {
 
             // 2. Process Inventory Item Updates
             const invPromises = Object.entries(invEdits).map(([id, updates]) =>
-                db.inventoryItems.update(parseInt(id), updates)
+                db.inventoryItems.update(parseInt(id), {
+                    ...updates,
+                    lastUpdatedBy: user?.name || 'Unknown'
+                })
             );
 
             // Update Deployment Last Inventory Update Timestamp
@@ -344,7 +369,8 @@ const Inventory = () => {
                     ...data,
                     deploymentId: selectedDeploymentId,
                     createdAt: new Date().toISOString(),
-                    quantity: parseInt(item.quantity) || 0
+                    quantity: parseInt(item.quantity) || 0,
+                    lastUpdatedBy: user?.name || 'Unknown'
                 });
             });
 
@@ -368,7 +394,8 @@ const Inventory = () => {
                 // 1. Mark Shipment Received
                 await db.shipments.update(receivingShipment.id, {
                     status: 'Received (Site)',
-                    siteReceivedDate: receiveDate
+                    siteReceivedDate: receiveDate,
+                    lastUpdatedBy: user?.name || 'Unknown'
                 });
 
                 // Prepare Reference Data: Kits and KitItems for this deployment
@@ -400,7 +427,10 @@ const Inventory = () => {
                         const currentActual = parseInt(targetKitItem.actualQuantity) || 0;
                         const newActual = currentActual + qtyReceived;
 
-                        await db.kitItems.update(targetKitItem.id, { actualQuantity: newActual });
+                        await db.kitItems.update(targetKitItem.id, {
+                            actualQuantity: newActual,
+                            lastUpdatedBy: user?.name || 'Unknown'
+                        });
                         processed = true;
                     }
 
@@ -425,7 +455,8 @@ const Inventory = () => {
                             // Consolidate
                             await db.inventoryItems.update(existingInv.id, {
                                 quantity: (parseInt(existingInv.quantity) || 0) + qtyReceived,
-                                updatedAt: new Date().toISOString()
+                                updatedAt: new Date().toISOString(),
+                                lastUpdatedBy: user?.name || 'Unknown'
                             });
                         } else {
                             // Create New
@@ -437,7 +468,8 @@ const Inventory = () => {
                                 category: 'Spare Parts',
                                 location: 'Received',
                                 notes: `Received from Shipment ${receivingShipment.uid}`,
-                                createdAt: new Date().toISOString()
+                                createdAt: new Date().toISOString(),
+                                lastUpdatedBy: user?.name || 'Unknown'
                             });
                         }
                     }
@@ -597,6 +629,10 @@ const Inventory = () => {
                     </h1>
                     <p className="page-description">
                         Consolidated inventory for <span className="text-accent-primary font-bold">{currentDeployment?.name}</span>
+                    </p>
+                    <p className={`text-xs font-mono mt-1 ${isInventoryOutdated ? 'text-error font-bold flex items-center gap-1' : 'text-success'}`}>
+                        {isInventoryOutdated && <AlertTriangle size={12} />}
+                        Last Validated: {lastUpdateDate ? format(new Date(lastUpdateDate), 'MMM d, yyyy') : 'Never'}
                     </p>
                 </div>
                 <div className="flex items-center gap-3 w-full md:w-auto flex-wrap justify-end">
@@ -825,9 +861,10 @@ const Inventory = () => {
                                                 type="text"
                                                 inputMode="numeric"
                                                 pattern="[0-9]*"
-                                                className="input input-sm w-24 text-center font-bold"
+                                                className="input input-sm w-24 text-center font-bold inventory-qty-input"
                                                 value={rawValue}
                                                 onChange={(e) => handleKitActualChange(row.key, e.target.value)}
+                                                onKeyDown={handleTableKeyDown}
                                                 disabled={!canEdit || isLocked}
                                             />
                                         </td>
@@ -891,9 +928,10 @@ const Inventory = () => {
                                                 type="text"
                                                 inputMode="numeric"
                                                 pattern="[0-9]*"
-                                                className="input input-sm w-24 text-center font-bold"
+                                                className="input input-sm w-24 text-center font-bold inventory-qty-input"
                                                 value={quantity}
                                                 onChange={(e) => handleInvItemChange(item.id, 'quantity', e.target.value)}
+                                                onKeyDown={handleTableKeyDown}
                                                 disabled={!canEdit || isLocked}
                                             />
                                         </td>
@@ -1008,9 +1046,10 @@ const Inventory = () => {
                                                     type="text"
                                                     inputMode="numeric"
                                                     pattern="[0-9]*"
-                                                    className="input input-sm w-24 text-center border-primary font-bold"
+                                                    className="input input-sm w-24 text-center border-primary font-bold inventory-qty-input"
                                                     value={item.quantity}
                                                     onChange={(e) => handleNewItemChange(item.tempId, 'quantity', e.target.value)}
+                                                    onKeyDown={handleTableKeyDown}
                                                 />
                                             </td>
                                             <td className="py-2.5 px-4 text-center">

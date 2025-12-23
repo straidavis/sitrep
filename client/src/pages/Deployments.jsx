@@ -156,9 +156,18 @@ const Deployments = () => {
         }
     };
 
-    const safeFormat = (dateStr, fmt) => {
+    const safeFormat = (dateStr, fmt, isDateOnly = false) => {
         if (!dateStr) return '-';
         try {
+            if (isDateOnly) {
+                // Parse YYYY-MM-DD directly from ISO string to ensure it stays on that calendar day
+                // regardless of timezone offsets (avoiding the "off by one day" issue)
+                const isoPart = dateStr.split('T')[0];
+                const [y, m, d] = isoPart.split('-').map(Number);
+                const localDate = new Date(y, m - 1, d, 12, 0, 0); // Set to Noon to be safe against DST
+                return format(localDate, fmt);
+            }
+
             const d = new Date(dateStr);
             if (isNaN(d.getTime())) return '-';
             return format(d, fmt);
@@ -344,8 +353,8 @@ const Deployments = () => {
                                                 <span className="badge badge-info">{deployment.type}</span>
                                             </td>
                                             <td>{deployment.location}</td>
-                                            <td>{safeFormat(deployment.startDate, 'MMM dd, yyyy')}</td>
-                                            <td>{safeFormat(deployment.endDate, 'MMM dd, yyyy')}</td>
+                                            <td>{safeFormat(deployment.startDate, 'MMM dd, yyyy', true)}</td>
+                                            <td>{safeFormat(deployment.endDate, 'MMM dd, yyyy', true)}</td>
                                             <td>
                                                 {calculateDuration(deployment.startDate, deployment.endDate)} days
                                             </td>

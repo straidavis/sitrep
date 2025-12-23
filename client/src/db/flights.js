@@ -63,15 +63,17 @@ export const getFlightById = async (id) => {
 /**
  * Add new flight
  * @param {Object} flightData
+ * @param {Object} user - User object for auditing
  * @returns {Promise<number>} - ID of created flight
  */
-export const addFlight = async (flightData) => {
+export const addFlight = async (flightData, user) => {
     try {
         const now = new Date().toISOString();
         const flight = {
             ...flightData,
             createdAt: now,
-            updatedAt: now
+            updatedAt: now,
+            lastUpdatedBy: user?.name || 'Unknown'
         };
 
         return await db.flights.add(flight);
@@ -85,13 +87,15 @@ export const addFlight = async (flightData) => {
  * Update flight
  * @param {number} id
  * @param {Object} updates
+ * @param {Object} user - User object for auditing
  * @returns {Promise<number>}
  */
-export const updateFlight = async (id, updates) => {
+export const updateFlight = async (id, updates, user) => {
     try {
         const updatedData = {
             ...updates,
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
+            lastUpdatedBy: user?.name || 'Unknown'
         };
 
         return await db.flights.update(id, updatedData);
@@ -182,80 +186,98 @@ export const getFlightStats = async (deploymentIds = null) => {
 
         const totalFlights = flights.length;
         const totalHours = flights.reduce((sum, f) => sum + (f.hours || 0), 0);
-        const byStatus = flights.reduce((acc, f) => {
-            acc[f.status] = (acc[f.status] || 0) + 1;
-            return acc;
-        }, {});
-
-        // --- New MRR Logic ---
-        // Numerator (S) = Status 'Complete' OR 'Delay'
-        // Denominator (D) = Total Scheduled - (CNX where Party != 'Shield AI') - ('Alert - No Launch')
-        // MRR = S / D
-
-        const importConstants = await import('../utils/constants'); // Dynamic import
+        const importConstants = await import('../utils/constants');
         const getResponsibleParty = importConstants.getResponsibleParty;
 
-        let S = 0; // Successes (Complete + Delay)
-        let D = 0; // Denominator (Total Relevant Attempts)
+        const byStatus = {}; // Will populate in loop below
+
+        // --- Updated MRR & Tasking Logic (User Defined) ---
+        // Denominator (Common): All events - (CNX where Party != 'Shield AI')
+        // MRR Numerator: Complete + Delay
+        // Tasking Numerator: Complete + Delay + Alert
+
+        let mrrNumerator = 0;       // Complete + Delay
+        let taskingNumerator = 0;   // Complete + Delay + Alert
+        let denominator = 0;        // Total - Excluded CNX
 
         flights.forEach(f => {
             const status = f.status ? f.status.trim() : '';
 
-            // Skip 'Alert - No Launch' entirely
-            if (status === 'Alert - No Launch') return;
+            // Normalize status for check
+            const isComplete = status === 'Complete';
+            const isDelay = status === 'Delay';
+            const isAlert = status === 'Alert - No Launch' || status === 'Alert'; // Handle legacy 'Alert'
+            const isCNX = status === 'CNX' || status === 'Cancelled';
 
-            // Determine Responsible Party
+            // Determine Responsible Party for CNX
             let party = f.responsibleParty;
             if (!party && f.reasonForDelay) {
                 party = getResponsibleParty(f.reasonForDelay);
             }
+            const isShieldAIFault = party === 'Shield AI';
 
-            if (status === 'Complete' || status === 'Delay') {
-                S++;
-                D++;
-            } else if (status === 'CNX' || status === 'Cancelled') {
-                if (party === 'Shield AI') {
-                    // Shield AI Fault -> Count in Denominator (Failure)
-                    D++;
-                } else {
-                    // Other Fault -> Exclude from Denominator
-                }
-            } else {
-                // Any other status? Assuming they count as scheduled unless explicitly excluded.
-                // Current statuses: Complete, Delay, CNX, Alert - No Launch.
-                // If there's an old 'Alert' status, treat it as excluded too?
-                // User only specified 'Alert - No Launch'. I'll exclude legacy 'Alert' too to be safe.
-                if (status === 'Alert') return;
+            // Populate byStatus (Split CNX)
+            let displayStatus = status;
+            if (isCNX && isShieldAIFault) {
+                displayStatus = 'CNX - Shield AI';
+            }
+            if (displayStatus) {
+                byStatus[displayStatus] = (byStatus[displayStatus] || 0) + 1;
+            }
 
-                // If unknown status, maybe count in denominator? 
-                // Let's stick to known knowns.
+            // Denominator Logic: Include everything EXCEPT CNX due to Others/USCG
+            // i.e., Include if NOT (CNX and !ShieldAIFault)
+            // Stated differently: Include if (Not CNX) OR (CNX and ShieldAIFault)
+
+            let includeInDenominator = true;
+            if (isCNX && !isShieldAIFault) {
+                includeInDenominator = false;
+            }
+
+            if (includeInDenominator) {
+                denominator++;
+            }
+
+            // Numerator Logic
+            if (isComplete || isDelay) {
+                mrrNumerator++;
+                taskingNumerator++;
+            } else if (isAlert) {
+                taskingNumerator++;
             }
         });
 
         // MRR
-        const currentMRR = D > 0 ? (S / D) * 100 : 100;
+        const currentMRR = denominator > 0 ? (mrrNumerator / denominator) * 100 : 100;
 
-        // Flights required to reach 95% MRR
-        // Formula: Let x be additional successes.
+        // Tasking Rating
+        const currentTaskingRate = denominator > 0 ? (taskingNumerator / denominator) * 100 : 100;
+
+        // Flights to 95% MRR
         // (S + x) / (D + x) >= 0.95
-        // S + x >= 0.95D + 0.95x
-        // 0.05x >= 0.95D - S
-        // x >= (0.95D - S) / 0.05
         let flightsTo95 = 0;
         if (currentMRR < 95) {
-            const numerator = (0.95 * D) - S;
+            const numerator = (0.95 * denominator) - mrrNumerator;
             const res = numerator / 0.05;
             flightsTo95 = Math.ceil(res);
             if (flightsTo95 < 0) flightsTo95 = 0;
         }
 
+        const totalContraband = flights.reduce((sum, f) => sum + (parseFloat(f.contraband) || 0), 0);
+        const totalDetainees = flights.reduce((sum, f) => sum + (parseInt(f.detainees) || 0), 0);
+        const totalTOIs = flights.reduce((sum, f) => sum + (parseInt(f.tois) || 0), 0);
+
         return {
             totalFlights,
             totalHours,
+            totalContraband,
+            totalDetainees,
+            totalTOIs,
             byStatus,
             missionReliability: currentMRR,
+            taskingRating: currentTaskingRate,
             flightsTo95MRR: flightsTo95,
-            debug: { S, D }
+            debug: { mrrNumerator, taskingNumerator, denominator }
         };
     } catch (error) {
         console.error('Error getting flight stats:', error);

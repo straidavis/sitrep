@@ -51,15 +51,17 @@ export const getEquipmentById = async (id) => {
 /**
  * Add new equipment
  * @param {Object} equipmentData
+ * @param {Object} user - User object for auditing
  * @returns {Promise<number>} - ID of created equipment
  */
-export const addEquipment = async (equipmentData) => {
+export const addEquipment = async (equipmentData, user) => {
     try {
         const now = new Date().toISOString();
         const equipment = {
             ...equipmentData,
             createdAt: now,
-            updatedAt: now
+            updatedAt: now,
+            lastUpdatedBy: user?.name || 'Unknown'
         };
 
         return await db.equipment.add(equipment);
@@ -73,13 +75,15 @@ export const addEquipment = async (equipmentData) => {
  * Update equipment
  * @param {number} id
  * @param {Object} updates
+ * @param {Object} user - User object for auditing
  * @returns {Promise<number>}
  */
-export const updateEquipment = async (id, updates) => {
+export const updateEquipment = async (id, updates, user) => {
     try {
         const updatedData = {
             ...updates,
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
+            lastUpdatedBy: user?.name || 'Unknown'
         };
 
         return await db.equipment.update(id, updatedData);
@@ -196,6 +200,126 @@ export const getEquipmentStats = async (deploymentIds = null) => {
             byType,
             byLocation,
             maintenanceDue
+        };
+
+        // --- Availability Rating Logic (Time-Series Carry Over) ---
+        // Range: Deployment Start (or first log) -> Today
+
+        let startDate = null;
+        let today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+
+        // 1. Determine Start Date
+        if (deploymentIds) {
+            const dIds = Array.isArray(deploymentIds) ? deploymentIds : [deploymentIds];
+            if (dIds.length === 1) {
+                const dep = await db.deployments.get(parseInt(dIds[0]));
+                if (dep && dep.startDate) {
+                    startDate = new Date(dep.startDate);
+                }
+            }
+        }
+        // Fallback: Use earliest log
+        if (!startDate && equipment.length > 0) {
+            const dates = equipment.map(e => e.date).sort();
+            if (dates.length > 0) startDate = new Date(dates[0]);
+        }
+
+        let availabilityRating = 0;
+
+        if (startDate) {
+            // Sort logs chronologically
+            const sortedLogs = [...equipment].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            // Group logs by Day
+            const logsByDay = {};
+            sortedLogs.forEach(log => {
+                if (!log.date) return;
+                const dKey = log.date.split('T')[0];
+                if (!logsByDay[dKey]) logsByDay[dKey] = [];
+                logsByDay[dKey].push(log);
+            });
+
+            // State Tracking: { KEY: { category, status } }
+            // Key must be composite to prevent collisions if serials reused across categories
+            const currentFleetState = {};
+
+            // ---------------------------------------------------------
+            // BACKFILL STRATEGY: 
+            // Pre-seed fleet state with the FIRST known record for each serial.
+            // This ensures that if Deployment Start is Day 1, but Log is Day 5, 
+            // Days 1-4 count based on that Day 5 status (assuming carried back).
+            // ---------------------------------------------------------
+            const seenSerials = new Set();
+            // Iterate chronologically to find the FIRST occurrence of each serial
+            sortedLogs.forEach(log => {
+                if (log.serialNumber && !seenSerials.has(log.serialNumber)) {
+                    seenSerials.add(log.serialNumber);
+                    const key = `${log.category}|${log.equipment}|${log.serialNumber}`;
+                    currentFleetState[key] = {
+                        category: (log.category || '').toLowerCase().trim(),
+                        status: (log.status || '').trim().toUpperCase()
+                    };
+                }
+            });
+            // ---------------------------------------------------------
+
+            let availableDays = 0;
+            let totalDays = 0;
+
+            const cursor = new Date(startDate);
+            let cursorStr = cursor.toISOString().split('T')[0];
+
+            while (cursorStr <= todayStr) {
+                totalDays++;
+
+                // Update fleet state with logs from this SPECIFIC day (overwriting the backfill/previous)
+                if (logsByDay[cursorStr]) {
+                    logsByDay[cursorStr].forEach(log => {
+                        if (log.serialNumber) {
+                            const key = `${log.category}|${log.equipment}|${log.serialNumber}`;
+                            currentFleetState[key] = {
+                                category: (log.category || '').toLowerCase().trim(),
+                                status: (log.status || '').trim().toUpperCase()
+                            };
+                        }
+                    });
+                }
+
+                // Check Criteria
+                const fleet = Object.values(currentFleetState);
+                const hasCapableAircraft = fleet.some(e =>
+                    e.category === 'aircraft' &&
+                    (e.status === 'FMC' || e.status === 'PMC')
+                );
+                const hasCapablePayload = fleet.some(e =>
+                    e.category.includes('payload') &&
+                    (e.status === 'FMC' || e.status === 'PMC')
+                );
+
+                if (hasCapableAircraft && hasCapablePayload) {
+                    availableDays++;
+                }
+
+                // Next Day
+                cursor.setDate(cursor.getDate() + 1);
+                cursorStr = cursor.toISOString().split('T')[0];
+                if (totalDays > 3650) break; // Sanity cap
+            }
+
+            if (totalDays > 0) {
+                availabilityRating = (availableDays / totalDays) * 100;
+            }
+            console.log(`[AvailStats] Days: ${totalDays}, Avail: ${availableDays}, Rating: ${availabilityRating.toFixed(1)}%`);
+        }
+
+        return {
+            totalEquipment,
+            byStatus,
+            byType,
+            byLocation,
+            maintenanceDue,
+            availabilityRating
         };
     } catch (error) {
         console.error('Error getting equipment stats:', error);

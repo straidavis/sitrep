@@ -34,6 +34,8 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
         windsLaunch: '',
         windsRecovery: '',
         tois: '',
+        contraband: '',
+        detainees: '',
         notes: ''
     });
 
@@ -65,7 +67,7 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                 scheduledLaunchTime: flight.scheduledLaunchTime || '',
                 launchTime: flight.launchTime || '',
                 recoveryTime: flight.recoveryTime || '',
-                hours: flight.hours || '',
+                hours: flight.hours ?? '',
                 payload1: flight.payload1 || '',
                 payload2: flight.payload2 || '',
                 payload3: flight.payload3 || '',
@@ -73,7 +75,9 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                 responsibleParty: flight.responsibleParty || '',
                 windsLaunch: flight.windsLaunch || '', // New field
                 windsRecovery: flight.windsRecovery || flight.winds || '', // Renamed field, default to old winds if valid
-                tois: flight.tois || '',
+                tois: flight.tois ?? '',
+                contraband: flight.contraband ?? '',
+                detainees: flight.detainees ?? '',
                 notes: flight.notes || ''
             });
         } else {
@@ -271,7 +275,11 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
                 next.payload3 = '';
                 next.windsLaunch = '';
                 next.windsRecovery = '';
+                next.windsLaunch = '';
+                next.windsRecovery = '';
                 next.tois = '';
+                next.contraband = '';
+                next.detainees = '';
             }
 
             return next;
@@ -310,7 +318,14 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
         if (formData.status === 'Complete') {
             if (!formData.scheduledLaunchTime) newErrors.scheduledLaunchTime = 'Required';
             if (!formData.launchTime) newErrors.launchTime = 'Required';
+            if (!formData.launchTime) newErrors.launchTime = 'Required';
             if (!formData.recoveryTime) newErrors.recoveryTime = 'Required';
+        }
+
+        // Require Contraband & Detainees for Complete or Delay
+        if (['Complete', 'Delay'].includes(formData.status)) {
+            if (formData.contraband === '' || formData.contraband === null) newErrors.contraband = 'Contraband is required (0 if none)';
+            if (formData.detainees === '' || formData.detainees === null) newErrors.detainees = 'Detainees is required (0 if none)';
         }
 
         setErrors(newErrors);
@@ -343,6 +358,8 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
             windsLaunch: formData.windsLaunch,
             windsRecovery: formData.windsRecovery,
             tois: parseInt(formData.tois) || 0,
+            contraband: parseFloat(formData.contraband) || 0,
+            detainees: parseInt(formData.detainees) || 0,
             notes: formData.notes
         };
 
@@ -667,19 +684,52 @@ const FlightForm = ({ flight, onSave, onCancel }) => {
 
 
 
-            {/* TOIs */}
-            <div className="form-group">
-                <label className="form-label">TOIs {(!['CNX', 'Alert - No Launch'].includes(formData.status)) && '*'}</label>
-                <input
-                    type="number"
-                    name="tois"
-                    className="input"
-                    placeholder="Enter number of TOIs"
-                    value={formData.tois}
-                    onChange={handleChange}
-                    disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
-                />
-                {errors.tois && <span className="form-error">{errors.tois}</span>}
+            <div className="grid grid-cols-3" style={{ gap: 'var(--spacing-lg)' }}>
+                {/* TOIs */}
+                <div className="form-group">
+                    <label className="form-label">TOIs {(!['CNX', 'Alert - No Launch'].includes(formData.status)) && '*'}</label>
+                    <input
+                        type="number"
+                        name="tois"
+                        className="input"
+                        placeholder="Enter number of TOIs"
+                        value={formData.tois}
+                        onChange={handleChange}
+                        disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
+                    />
+                    {errors.tois && <span className="form-error">{errors.tois}</span>}
+                </div>
+
+                {/* Contraband */}
+                <div className="form-group">
+                    <label className="form-label">Contraband (lbs) {(['Complete', 'Delay'].includes(formData.status)) && '*'}</label>
+                    <input
+                        type="number"
+                        name="contraband"
+                        className="input"
+                        placeholder="Lbs"
+                        value={formData.contraband}
+                        onChange={handleChange}
+                        step="0.1"
+                        disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
+                    />
+                    {errors.contraband && <span className="form-error">{errors.contraband}</span>}
+                </div>
+
+                {/* Detainees */}
+                <div className="form-group">
+                    <label className="form-label">Detainees {(['Complete', 'Delay'].includes(formData.status)) && '*'}</label>
+                    <input
+                        type="number"
+                        name="detainees"
+                        className="input"
+                        placeholder="Count"
+                        value={formData.detainees}
+                        onChange={handleChange}
+                        disabled={!canEdit || ['Alert - No Launch', 'CNX'].includes(formData.status)}
+                    />
+                    {errors.detainees && <span className="form-error">{errors.detainees}</span>}
+                </div>
             </div>
 
             {/* Notes */}

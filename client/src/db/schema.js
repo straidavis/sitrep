@@ -16,21 +16,22 @@ db.on('versionchange', function (event) {
 });
 
 // Define database schema
-db.version(201).stores({
-    flights: '++id, date, missionNumber, aircraftNumber, launcher, numberOfLaunches, status, deploymentId, scheduledLaunchTime, launchTime, recoveryTime, createdAt, updatedAt',
-    equipment: '++id, date, category, equipment, serialNumber, status, deploymentId, location, software, createdAt, updatedAt',
-    deployments: '++id, name, type, startDate, endDate, location, userEmails, createdAt, updatedAt, lastInventoryUpdate', // added lastInventoryUpdate
-    personnel: '++id, name, rank, role, createdAt, updatedAt',
-    users: '++id, email, passwordHash, tempPassword, mustChangePassword, role, addedBy, createdAt', // Local permission overrides
-    apiKeys: '++id, key, name, status, createdAt', // For external access
+db.version(202).stores({
+    flights: '++id, date, missionNumber, aircraftNumber, launcher, numberOfLaunches, status, deploymentId, scheduledLaunchTime, launchTime, recoveryTime, createdAt, updatedAt, lastUpdatedBy',
+    equipment: '++id, date, category, equipment, serialNumber, status, deploymentId, location, software, createdAt, updatedAt, lastUpdatedBy',
+    deployments: '++id, name, type, startDate, endDate, location, userEmails, createdAt, updatedAt, lastInventoryUpdate, lastUpdatedBy',
+    personnel: '++id, name, rank, role, createdAt, updatedAt, lastUpdatedBy',
+    users: '++id, email, passwordHash, tempPassword, mustChangePassword, role, addedBy, createdAt',
+    apiKeys: '++id, key, name, status, createdAt',
     settings: 'key',
-    kits: '++id, name, version, deploymentId, createdAt',
-    kitItems: '++id, kitId, partNumber, description, quantity, category, serialNumber, actualQuantity',
-    inventoryItems: '++id, deploymentId, partNumber, description, quantity, category, location, notes, createdAt, updatedAt',
-    shipments: '++id, uid, deploymentId, orderDate, shipDate, hostReceivedDate, siteReceivedDate, carrier, trackingNumber, status, createdAt',
+    kits: '++id, name, version, deploymentId, createdAt, lastUpdatedBy',
+    kitItems: '++id, kitId, partNumber, description, quantity, category, serialNumber, actualQuantity, lastUpdatedBy',
+    inventoryItems: '++id, deploymentId, partNumber, description, quantity, category, location, notes, createdAt, updatedAt, lastUpdatedBy',
+    shipments: '++id, uid, deploymentId, orderDate, shipDate, hostReceivedDate, siteReceivedDate, carrier, trackingNumber, status, createdAt, lastUpdatedBy',
     shipmentItems: '++id, shipmentId, partNumber, description, quantity, serialNumber, isNewItem, receivedDate',
-    accessRequests: '++id, email, name, status, requestedAt', // status: 'Pending', 'Approved', 'Denied'
-    partsUtilization: '++id, deploymentId, partNumber, description, quantity, type, date, createdAt' // type: 'Scheduled', 'Unscheduled'
+    accessRequests: '++id, email, name, status, requestedAt',
+    partsUtilization: '++id, deploymentId, partNumber, description, quantity, type, date, createdAt, lastUpdatedBy',
+    serviceBulletins: '++id, sbNumber, description, link, notes, effectedEquipment, deploymentStatus, createdAt, updatedAt, lastUpdatedBy'
 });
 
 // Type definitions for TypeScript-like intellisense

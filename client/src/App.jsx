@@ -11,6 +11,7 @@ import Kits from './pages/Kits';
 
 import Inventory from './pages/Inventory';
 import PartsTracking from './pages/PartsTracking';
+import ServiceBulletins from './pages/ServiceBulletins';
 
 import { DeploymentProvider } from './context/DeploymentContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -42,6 +43,7 @@ function App() {
             <Route path="/deployments" element={<Deployments />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/service-bulletins" element={<ServiceBulletins />} />
             <Route path="/admin" element={
               <ProtectedRoute requiredRole="Sitrep.Admin">
                 <Admin />

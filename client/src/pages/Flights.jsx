@@ -15,7 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import { getResponsibleParty } from '../utils/constants';
 
 const Flights = () => {
-    const { canEdit } = useAuth();
+    const { canEdit, user } = useAuth();
 
     const [flights, setFlights] = useState([]);
     const [filteredFlights, setFilteredFlights] = useState([]);
@@ -117,13 +117,13 @@ const Flights = () => {
     const handleSaveFlight = async (flightData) => {
         try {
             if (editingFlight) {
-                await updateFlight(editingFlight.id, flightData);
+                await updateFlight(editingFlight.id, flightData, user);
             } else {
                 // If a single deployment is selected globally, auto-assign it
                 if (selectedDeploymentIds && selectedDeploymentIds.length === 1 && !flightData.deploymentId) {
                     flightData.deploymentId = parseInt(selectedDeploymentIds[0]);
                 }
-                await addFlight(flightData);
+                await addFlight(flightData, user);
             }
             setShowModal(false);
             setEditingFlight(null);
@@ -299,7 +299,7 @@ const Flights = () => {
                 };
             });
 
-            await Promise.all(flightsToAdd.map(f => addFlight(f)));
+            await Promise.all(flightsToAdd.map(f => addFlight(f, user)));
 
             setImportModalOpen(false);
             setParsedFlights([]);
@@ -528,6 +528,7 @@ const Flights = () => {
                                 <th>Hours</th>
                                 <th>Resp. Party</th>
                                 <th>Status</th>
+                                <th>Updated By</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -572,6 +573,9 @@ const Flights = () => {
                                             <span className={`badge ${getStatusBadgeClass(flight.status)}`}>
                                                 {flight.status}
                                             </span>
+                                        </td>
+                                        <td className="text-xs text-muted">
+                                            {flight.lastUpdatedBy || '-'}
                                         </td>
                                         <td>
                                             <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>

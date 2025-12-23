@@ -22,7 +22,8 @@ import {
     WifiOff,
     LogIn,
     Lock,
-    Clock
+    Clock,
+    AlertCircle
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
@@ -101,6 +102,7 @@ const Layout = ({ children }) => {
         { path: '/', icon: Home, label: 'Dashboard' },
         { path: '/flights', icon: Plane, label: 'Flights' },
         { path: '/equipment', icon: Package, label: 'Equipment' },
+        { path: '/service-bulletins', icon: AlertCircle, label: 'Service Bulletins' },
         { path: '/inventory', icon: ClipboardList, label: 'Master Inventory' },
         { path: '/kits', icon: Briefcase, label: 'Inventory Kits' },
         { path: '/parts', icon: Truck, label: 'Track Parts' },

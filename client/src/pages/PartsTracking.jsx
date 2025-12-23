@@ -145,7 +145,8 @@ const PartsTracking = () => {
                     status: (data.siteReceivedDate ? 'Received (Site)' :
                         data.hostReceivedDate ? 'Received (Host)' :
                             data.shipDate ? 'Shipped' : 'Ordered'),
-                    updatedAt: new Date().toISOString()
+                    updatedAt: new Date().toISOString(),
+                    lastUpdatedBy: user?.name || 'Unknown'
                 };
 
                 if (sId) {
@@ -189,10 +190,19 @@ const PartsTracking = () => {
         const newItems = [...shipmentItems];
         newItems[index] = { ...newItems[index], [field]: val };
 
-        // Auto-fill description from lookup if part number changes
+        // Auto-fill description logic
         if (field === 'partNumber') {
-            const match = inventoryLookup.find(i => i.partNumber === val);
-            if (match) newItems[index].description = match.description;
+            // Check for combined format "Part | Description" (from robust search)
+            if (val.includes(' | ')) {
+                const [pNum, ...descParts] = val.split(' | ');
+                const desc = descParts.join(' | ').trim();
+                newItems[index].partNumber = pNum.trim();
+                newItems[index].description = desc;
+            } else {
+                // Classic lookup by exact part number match
+                const match = inventoryLookup.find(i => i.partNumber === val);
+                if (match) newItems[index].description = match.description;
+            }
         }
 
         setShipmentItems(newItems);
@@ -343,7 +353,8 @@ const PartsTracking = () => {
                 return {
                     ...data,
                     deploymentId: parseInt(targetDeploymentId),
-                    createdAt: new Date().toISOString()
+                    createdAt: new Date().toISOString(),
+                    lastUpdatedBy: user?.name || 'Unknown'
                 };
             });
 
@@ -382,6 +393,7 @@ const PartsTracking = () => {
                             <th>Received (Host)</th>
                             <th>Received (Site)</th>
                             <th>Status</th>
+                            <th>Updated By</th>
                             <th>Deployment</th>
                             <th>Actions</th>
                         </tr>
@@ -407,6 +419,7 @@ const PartsTracking = () => {
                                         {s.status}
                                     </span>
                                 </td>
+                                <td className="text-xs text-muted font-mono">{s.lastUpdatedBy || '-'}</td>
                                 <td className="text-sm text-muted">
                                     {deployments.find(d => d.id === s.deploymentId)?.name || '-'}
                                 </td>
@@ -622,9 +635,12 @@ const PartsTracking = () => {
                                             onChange={e => updateItem(idx, 'partNumber', e.target.value)}
                                             list={`part-list-${idx}`}
                                             required
+                                            placeholder="Search P/N or Description..."
                                         />
                                         <datalist id={`part-list-${idx}`}>
-                                            {inventoryLookup.map((i, k) => <option key={k} value={i.partNumber} />)}
+                                            {inventoryLookup.map((i, k) => (
+                                                <option key={k} value={`${i.partNumber} | ${i.description}`} />
+                                            ))}
                                         </datalist>
                                     </div>
                                 </div>

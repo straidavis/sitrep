@@ -8,7 +8,7 @@ import { useDeployment } from '../context/DeploymentContext';
 import { useAuth } from '../context/AuthContext';
 
 const Equipment = () => {
-    const { canEdit } = useAuth();
+    const { canEdit, user } = useAuth();
     const { selectedDeploymentIds, deployments } = useDeployment();
 
     const [allEquipmentData, setAllEquipmentData] = useState([]);
@@ -177,9 +177,9 @@ const Equipment = () => {
                     // If modifying an existing record for TODAY, update it.
                     // If carrying over or creating new daily record, ADD it.
                     if (item.hasRecord && item.originalId) {
-                        return updateEquipment(item.originalId, dataToSave);
+                        return updateEquipment(item.originalId, dataToSave, user);
                     } else {
-                        return addEquipment(dataToSave);
+                        return addEquipment(dataToSave, user);
                     }
                 });
 
@@ -211,9 +211,9 @@ const Equipment = () => {
     const handleSaveForm = async (data) => {
         try {
             if (selectedEquipment && selectedEquipment.originalId) {
-                await updateEquipment(selectedEquipment.originalId, data);
+                await updateEquipment(selectedEquipment.originalId, data, user);
             } else {
-                await addEquipment(data);
+                await addEquipment(data, user);
             }
             setShowModal(false);
             loadData();
@@ -292,6 +292,9 @@ const Equipment = () => {
                                                 ? 'Today'
                                                 : `${daysSinceUpdate} day${daysSinceUpdate !== 1 ? 's' : ''} ago`}
                                         </span>
+                                    </div>
+                                    <div className="text-[10px] text-muted truncate max-w-[100px]" title={item.lastUpdatedBy}>
+                                        by {item.lastUpdatedBy || 'System'}
                                     </div>
                                 </td>
                                 <td className="px-4 py-3 align-middle">
@@ -384,6 +387,38 @@ const Equipment = () => {
                     </div>
 
                     <div className="flex items-center gap-3 w-full md:w-auto">
+                        {/* Save Actions in Header */}
+                        {canEdit && !isSaving && displayData.length > 0 && (
+                            <div className="relative mr-2">
+                                {selectedDeploymentIds?.length === 1 ? (
+                                    <button
+                                        className={`btn h-10 px-6 border-none ${Object.keys(localChanges).length > 0
+                                            ? 'btn-primary'
+                                            : 'bg-white text-slate-900 hover:bg-slate-200'
+                                            }`}
+                                        onClick={handleUpdateAll}
+                                        title="Save all checks to database"
+                                    >
+                                        <Save size={18} className="mr-2" />
+                                        <span className="font-bold">
+                                            {Object.keys(localChanges).length > 0 ? "Save Changes" : "Save All"}
+                                        </span>
+                                    </button>
+                                ) : (
+                                    <>
+                                        <button className="btn btn-disabled bg-neutral-900 border-neutral-800 text-neutral-600 h-10 px-6 gap-2 opacity-50 cursor-not-allowed">
+                                            <Save size={18} />
+                                            <span>Save All</span>
+                                        </button>
+                                        <div className="absolute top-full right-0 mt-1.5 flex items-center gap-1 text-xs text-muted font-bold whitespace-nowrap animate-pulse">
+                                            <AlertTriangle size={12} />
+                                            <span>Select Single Deployment</span>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+
                         <div className="relative flex-1 md:w-64">
                             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
                             <input
@@ -393,7 +428,7 @@ const Equipment = () => {
                             />
                         </div>
                         {canEdit && (
-                            <button className="btn btn-primary h-10 px-4" onClick={handleAddEquipment}>
+                            <button className="btn btn-secondary h-10 px-4" onClick={handleAddEquipment}>
                                 <Plus size={18} className="mr-2" />
                                 <span className="font-semibold">Add New</span>
                             </button>
@@ -429,27 +464,7 @@ const Equipment = () => {
                 </div>
             )}
 
-            {/* Save / Validate FAB */}
-            {canEdit && isSaving === false && displayData.length > 0 && (
-                <div className="fixed bottom-8 right-8 z-30 animate-bounce-in">
-                    <button
-                        className={`btn shadow-xl py-3 px-6 rounded-full flex items-center gap-3 ${Object.keys(localChanges).length > 0 ? 'btn-primary' : 'btn-success'}`}
-                        onClick={handleUpdateAll}
-                    >
-                        {Object.keys(localChanges).length > 0 ? (
-                            <>
-                                <Save size={20} />
-                                <span className="font-bold">Save Changes</span>
-                            </>
-                        ) : (
-                            <>
-                                <Check size={20} />
-                                <span className="font-bold">Validate All Statuses</span>
-                            </>
-                        )}
-                    </button>
-                </div>
-            )}
+
 
             {/* Modal */}
             {showModal && (
