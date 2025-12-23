@@ -12,10 +12,12 @@ This application bridges the gap between field operations and command oversight.
 *   **Equipment Status:** Monitor the operational status of all deployed assets.
 
 ### Key Features
-*   **Offline-First Architecture:** Built with `Dexie.js` (IndexedDB), the client works fully offline. Data is stored locally and syncs to the central database when connectivity is restored.
-*   **Role-Based Access:** Granular permissions for Admins, Editors, and Deployers (restricted view).
+*   **Dual-Mode Architecture:**
+    *   **Cloud Mode:** Hosted on Azure with centralized SQL database and SSO (Microsoft 365) authentication.
+    *   **Offline/Local Mode:** capable of running fully offline using `Dexie.js` (IndexedDB) with manual sync capabilities for standalone or air-gapped deployments.
+*   **Role-Based Access:** Granular permissions for Admins, Editors, and Deployers.
 *   **Excel Integration:** Import/Export capabilities for inventory and equipment lists.
-*   **Financial Tracking:** basic contract line item number (CLIN) tracking (if enabled).
+*   **Financial Tracking:** Basic contract line item number (CLIN) tracking.
 
 ---
 
@@ -23,18 +25,20 @@ This application bridges the gap between field operations and command oversight.
 
 ### Frontend (`/client`)
 *   **Framework:** React 18 (Vite)
-*   **State/Data:** `Deixe.js` (IndexedDB wrapper) for local storage.
+*   **Hosting:** Azure Static Web Apps (Cloud) OR Electron/Local Server (Offline).
+*   **State/Data:** Hybrid approach - uses API for online mode, `Dexie.js` for offline/local mode.
 *   **Styling:** Tailwind CSS + Lucide React Icons.
-*   **Auth:** MSAL (Microsoft Authentication Library) / Local Auth fallback.
+*   **Auth:** MSAL (Azure AD) for Cloud, Local Hash/Store for offline.
 *   **Visualization:** Recharts for data analytics.
 
 ### Backend (`/server`)
 *   **Runtime:** Node.js & Express.
+*   **Hosting:** Azure App Service (Linux).
 *   **Database ORM:** Sequelize.
 *   **Databases Supported:** 
-    *   **Development/Local:** SQLite (`database.sqlite`).
     *   **Production:** Azure SQL Database (MSSQL).
-*   **Security:** API Key authentication for external integrations.
+    *   **Local/Offline:** SQLite (`database.sqlite`).
+*   **Security:** Bearer Token (JWT) validation for SSO users & API Key support.
 
 ---
 
@@ -52,13 +56,12 @@ cd sitrep
 ```
 
 ### 2. Setup Backend (Server)
-The server provides the API and handles synchronization with the central SQL database.
-
 ```bash
 cd server
 npm install
 
-# Create a .env file (or rely on defaults/sqlite)
+# Create a .env file based on environment
+# For Local Dev/SQLite:
 # cp .env.example .env
 
 # Start the server (Runs on port 3001)
@@ -66,8 +69,6 @@ npm run dev
 ```
 
 ### 3. Setup Frontend (Client)
-The client is the main user interface.
-
 ```bash
 cd ../client
 npm install
@@ -76,38 +77,34 @@ npm install
 npm run dev
 ```
 
-Access the application at `http://localhost:5173`.
+By default, the app runs in **Local Mode**. To test Cloud/Microsoft Mode locally, update your `.env` in `client/`:
+```env
+VITE_AUTH_MODE=microsoft
+VITE_API_URL=http://localhost:3001
+VITE_AZURE_CLIENT_ID=<your-client-id>
+VITE_AZURE_TENANT_ID=<your-tenant-id>
+```
 
 ---
 
 ## ☁️ Deployment
 
-The application is designed to be deployed to **Azure**:
+For detailed, step-by-step instructions on deploying SITREP to Azure, please refer to:
+👉 **[AZURE_DEPLOYMENT.md](./AZURE_DEPLOYMENT.md)**
 
-*   **Frontend:** Azure Static Web Apps.
-*   **Backend:** Azure App Service (Linux/Node).
-*   **Database:** Azure SQL Database.
-
-For detailed deployment instructions, please refer to the [Deployment Workflow](.agent/workflows/deploy_to_azure.md).
+High-level architecture:
+*   **Frontend:** Azure Static Web Apps
+*   **Backend:** Azure App Service
+*   **Database:** Azure SQL
 
 ---
 
 ## 🛡️ Admin Portal
 
-The application includes a built-in Admin Portal for authorized users:
-*   **User Management:** Grant `Editor`, `Deployer`, or `Admin` roles.
-*   **Deployment Assignment:** Restrict `Deployer` roles to specific deployments.
-*   **Backups:** Export/Import full system state via JSON (critical for transferring data between offline devices).
-*   **API Keys:** Generate secure keys for external tools (e.g., PowerBI) to access the backend API.
-
----
-
-## 🤝 Contributing
-
-1.  Create a feature branch (`git checkout -b feature/amazing-feature`).
-2.  Commit your changes (`git commit -m 'Add some amazing feature'`).
-3.  Push to the branch (`git push origin feature/amazing-feature`).
-4.  Open a Pull Request.
+The application includes a built-in Admin Portal:
+*   **User Management:** Edit roles and permissions.
+*   **Backups:** JSON Export/Import for system state.
+*   **API Keys:** Manage keys for external integrations.
 
 ---
 

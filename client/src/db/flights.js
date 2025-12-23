@@ -3,6 +3,10 @@
  */
 
 import { db } from './schema';
+import { api } from '../services/api';
+import { config } from '../config';
+
+const useRemote = () => config.authMode === 'microsoft';
 
 /**
  * Get all flights
@@ -11,6 +15,20 @@ import { db } from './schema';
  */
 export const getAllFlights = async (filters = {}) => {
     try {
+        if (useRemote()) {
+            let flights = await api.get('v1/flights');
+
+            // Client-side filtering
+            if (filters.startDate && filters.endDate) {
+                flights = flights.filter(f => f.date >= filters.startDate && f.date <= filters.endDate);
+            }
+            if (filters.tailNumber) flights = flights.filter(f => f.tailNumber === filters.tailNumber);
+            if (filters.missionType) flights = flights.filter(f => f.missionType === filters.missionType);
+            if (filters.status) flights = flights.filter(f => f.status === filters.status);
+
+            return flights.sort((a, b) => new Date(b.date) - new Date(a.date));
+        }
+
         let query = db.flights.toCollection();
 
         // Apply filters
@@ -75,6 +93,11 @@ export const addFlight = async (flightData, user) => {
             updatedAt: now,
             lastUpdatedBy: user?.name || 'Unknown'
         };
+
+        if (useRemote()) {
+            const result = await api.post('v1/flights', flight);
+            return result.id;
+        }
 
         return await db.flights.add(flight);
     } catch (error) {
@@ -171,7 +194,7 @@ export const searchFlights = async (searchTerm) => {
  */
 export const getFlightStats = async (deploymentIds = null) => {
     try {
-        let flights = await db.flights.toArray();
+        let flights = await getAllFlights({});
 
         if (deploymentIds) {
             // Handle both single ID (legacy) and array

@@ -3,6 +3,11 @@
  */
 
 import { db } from './schema';
+import { api } from '../services/api';
+import { config } from '../config';
+import { getDeploymentById } from './deployments';
+
+const useRemote = () => config.authMode === 'microsoft';
 
 /**
  * Get all equipment
@@ -11,6 +16,18 @@ import { db } from './schema';
  */
 export const getAllEquipment = async (filters = {}) => {
     try {
+        if (useRemote()) {
+            let equipment = await api.get('v1/equipment');
+            // Apply filters client-side to match Dexie behavior for now
+            // (Ideally API supports these query params)
+            if (filters.status) equipment = equipment.filter(eq => eq.status === filters.status);
+            if (filters.type) equipment = equipment.filter(eq => eq.type === filters.type);
+            if (filters.location) equipment = equipment.filter(eq => eq.location === filters.location);
+
+            // Sort (simulating .reverse().sortBy('updatedAt'))
+            return equipment.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        }
+
         let query = db.equipment.toCollection();
 
         // Apply filters
@@ -63,6 +80,11 @@ export const addEquipment = async (equipmentData, user) => {
             updatedAt: now,
             lastUpdatedBy: user?.name || 'Unknown'
         };
+
+        if (useRemote()) {
+            const result = await api.post('v1/equipment', equipment);
+            return result.id;
+        }
 
         return await db.equipment.add(equipment);
     } catch (error) {
@@ -159,7 +181,7 @@ export const searchEquipment = async (searchTerm) => {
  */
 export const getEquipmentStats = async (deploymentIds = null) => {
     try {
-        let equipment = await db.equipment.toArray();
+        let equipment = await getAllEquipment({});
 
         if (deploymentIds) {
             // Handle both single ID (legacy) and array
@@ -213,7 +235,7 @@ export const getEquipmentStats = async (deploymentIds = null) => {
         if (deploymentIds) {
             const dIds = Array.isArray(deploymentIds) ? deploymentIds : [deploymentIds];
             if (dIds.length === 1) {
-                const dep = await db.deployments.get(parseInt(dIds[0]));
+                const dep = await getDeploymentById(parseInt(dIds[0]));
                 if (dep && dep.startDate) {
                     startDate = new Date(dep.startDate);
                 }

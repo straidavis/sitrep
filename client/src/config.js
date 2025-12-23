@@ -1,10 +1,11 @@
 const defaults = {
-    serverUrl: "http://localhost:3001",
-    authMode: "local",
+    serverUrl: import.meta.env.VITE_API_URL || "http://localhost:3001",
+    authMode: import.meta.env.VITE_AUTH_MODE || "local", // 'local' or 'microsoft'
+    apiKey: import.meta.env.VITE_API_KEY || "", // For legacy/local auth
     m365: {
-        clientId: "",
-        tenantId: "",
-        redirectUri: "http://localhost:5173"
+        clientId: import.meta.env.VITE_AZURE_CLIENT_ID || "",
+        tenantId: import.meta.env.VITE_AZURE_TENANT_ID || "",
+        redirectUri: import.meta.env.VITE_AZURE_REDIRECT_URI || window.location.origin
     },
     defaultAdmin: "matt.davis@shield.ai"
 };

@@ -3,6 +3,10 @@
  */
 
 import { db } from './schema';
+import { api } from '../services/api';
+import { config } from '../config';
+
+const useRemote = () => config.authMode === 'microsoft';
 
 /**
  * Get all deployments
@@ -11,6 +15,14 @@ import { db } from './schema';
  */
 export const getAllDeployments = async (filters = {}) => {
     try {
+        if (useRemote()) {
+            let deployments = await api.get('v1/deployments');
+            if (filters.type) deployments = deployments.filter(dep => dep.type === filters.type);
+            if (filters.status) deployments = deployments.filter(dep => dep.status === filters.status);
+            if (filters.location) deployments = deployments.filter(dep => dep.location === filters.location);
+            return deployments.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+        }
+
         let query = db.deployments.toCollection();
 
         // Apply filters
@@ -41,6 +53,9 @@ export const getAllDeployments = async (filters = {}) => {
  */
 export const getDeploymentById = async (id) => {
     try {
+        if (useRemote()) {
+            return await api.get(`v1/deployments/${id}`);
+        }
         return await db.deployments.get(id);
     } catch (error) {
         console.error('Error getting deployment:', error);
