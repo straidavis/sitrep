@@ -1,0 +1,17 @@
+plugins {
+    id 'maven-publish'
+}
+
+repositories {
+    mavenCentral()
+}
+
+// ============================================================
+// FIX: Missing 'patch' task
+// ============================================================
+// This task is required by the internal build system.
+tasks.register('patch') {
+    doLast {
+        println 'Patch task executed.'
+    }
+}

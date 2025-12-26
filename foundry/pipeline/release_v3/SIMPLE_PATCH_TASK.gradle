@@ -1,0 +1,15 @@
+
+// ============================================================
+// SIMPLEST FIX FOR "Task 'patch' not found"
+// ============================================================
+// 1. Open your ROOT 'build.gradle' file.
+// 2. CHECK: Did you accidentally type "rootProject()" with parentheses? 
+//           If so, remove the parentheses. It should be "rootProject {" or just "allprojects {".
+// 3. DELETE any failing "task patch" code you added previously.
+// 4. PASTE ONLY this simple block at the very bottom:
+
+tasks.register('patch') {
+    doLast {
+        println 'Patch task executed.'
+    }
+}

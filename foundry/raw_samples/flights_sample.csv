@@ -1,0 +1,3 @@
+Date,Mission #,base_mission_number,Aircraft #,Status,scheduled_launch,launch_time,recovery_time,Hours,tach_time,hover_time,manual_control,payload_1,payload_2,weather_summary,winds,oat,risk_level,fuel_in,fuel_out,fuel_burn,tois,notes,launcher,number_of_launches,contraband_lbs,detainees,reason_for_cancel,responsible_party
+2025-11-20,M-20251120-01,BMSN-001,VBAT-001,Success,10:00,10:05,11:35,1.5,120.5,0.2,No,EO/IR,Relay,Sunny,5kts,25.0,Low,5.0,2.5,2.5,1,Routine patrol,L-01,1,0,0,,John Doe
+2025-11-21,M-20251121-02,BMSN-002,VBAT-002,Aborted,14:00,14:10,14:25,0.25,45.2,0.1,Yes,Payload A,,Cloudy,15kts,18.0,Medium,4.8,4.5,0.3,0,Aborted due to weather,L-02,0,0,0,Weather,Jane Smith

@@ -1,0 +1,6 @@
+Date,Mission #,Aircraft #,Status,Hours,Payload 1,Weather
+44413,20251116_01,200079,Complete,0.73,Dummy,Clear
+44414,20251116_VB,200080,Complete,1.33,Dummy,Clear
+44460,20251120_CNX,200080,CNX,0,EO950,Rain
+44463,20251123_DLY,200079,Delay,6.45,EO950,Low Ceiling
+44492,20251210_MISHAP,200085,Mishap,0,EO960,Clear

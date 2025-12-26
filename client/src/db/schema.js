@@ -5,7 +5,7 @@
 
 import Dexie from 'dexie';
 
-export const db = new Dexie('SITREPDatabase');
+export const db = new Dexie('SPARKDatabase');
 
 // Handle version changes (multi-tab support)
 db.on('versionchange', function (event) {

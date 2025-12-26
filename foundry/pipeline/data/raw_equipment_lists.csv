@@ -1,0 +1,5 @@
+Category,Equipment,Serial Number,Status,Location,Software
+Aircraft,V-BAT,200079,FMC,Hangar,1.3.7
+Aircraft,V-BAT,200080,NMC,Sea,1.2.1
+Payload,EO950,950202,FMC,Aircraft 079,1.3.7
+Launcher,Launcher,200-K0105-02C,FMC,Deck,N/A

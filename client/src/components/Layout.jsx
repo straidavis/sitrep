@@ -111,7 +111,7 @@ const Layout = ({ children }) => {
         { path: '/settings', icon: Settings, label: 'Settings' },
     ];
 
-    if (roles && roles.includes('Sitrep.Admin')) {
+    if (roles && roles.includes('Spark.Admin')) {
         navItems.push({ path: '/admin', icon: Shield, label: 'Admin Portal' });
     }
 

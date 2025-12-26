@@ -1,0 +1,6 @@
+{
+    "serverType": "Local",
+    "authType": "Local",
+    "apiBaseUrl": "http://localhost:3002",
+    "adminEmail": "matt.davis@shield.ai"
+}

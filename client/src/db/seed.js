@@ -44,7 +44,7 @@ export const seedDatabase = async () => {
         }
 
         // 2. Seed Flights
-        const flightsData = initialData['SITREP Data'];
+        const flightsData = initialData['SPARK Data'];
         if (flightsData && flightsData.length > 0) {
             const flights = flightsData.map(row => {
                 const date = excelDateToJSDate(row['Date']);

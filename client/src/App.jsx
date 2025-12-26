@@ -45,7 +45,7 @@ function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/service-bulletins" element={<ServiceBulletins />} />
             <Route path="/admin" element={
-              <ProtectedRoute requiredRole="Sitrep.Admin">
+              <ProtectedRoute requiredRole="Spark.Admin">
                 <Admin />
               </ProtectedRoute>
             } />

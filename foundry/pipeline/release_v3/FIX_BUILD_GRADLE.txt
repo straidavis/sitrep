@@ -1,0 +1,12 @@
+
+// ============================================================
+// FIX FOR "Task 'patch' not found" ERROR
+// ============================================================
+// Append the following code to the BOTTOM of your root 'build.gradle' file.
+// This defines the missing task that the build system is looking for.
+
+task patch {
+    doLast {
+        println("Patch task running...")
+    }
+}

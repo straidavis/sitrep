@@ -14,7 +14,7 @@ const defaults = {
 // In Browser (Dev), we use defaults (or you could fetch /config.json if served)
 export const config = {
     ...defaults,
-    ...(window.SITREP_CONFIG || {})
+    ...(window.SPARK_CONFIG || {})
 };
 
-console.log("SITREP Config Loaded:", config);
+console.log("SPARK Config Loaded:", config);

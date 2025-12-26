@@ -1,0 +1,11 @@
+
+// ============================================================
+// ROOT build.gradle content
+// ============================================================
+// If your file is empty, paste the code below into it.
+
+tasks.register('patch') {
+    doLast {
+        println 'Patch task executed.'
+    }
+}

@@ -7,13 +7,13 @@ const path = require('path');
 // In production, we expect it next to the executable
 let configPath;
 if (process.env.NODE_ENV === 'development' || !process.isPackaged) {
-    configPath = path.resolve(__dirname, '../sitrep-config.json');
+    configPath = path.resolve(__dirname, '../spark-config.json');
 } else {
     // Priority: 
     // 1. Portable EXE location (if running as portable)
     // 2. Next to the executable (if installed/unpacked)
     const basePath = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath);
-    configPath = path.join(basePath, 'sitrep-config.json');
+    configPath = path.join(basePath, 'spark-config.json');
 }
 
 console.log('Looking for config at:', configPath);
@@ -37,4 +37,4 @@ try {
 }
 
 // Expose to Renderer
-contextBridge.exposeInMainWorld('SITREP_CONFIG', config);
+contextBridge.exposeInMainWorld('SPARK_CONFIG', config);

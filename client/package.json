@@ -1,10 +1,10 @@
 {
-  "name": "sitrep-client",
+  "name": "spark-client",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "main": "electron/main.cjs",
-  "description": "Aircraft Materiel Condition Report",
+  "description": "S.P.A.R.K. (Status, Parts, Aircraft Readiness & Kits)",
   "author": "Shield AI",
   "scripts": {
     "dev": "vite",
@@ -39,7 +39,7 @@
   },
   "build": {
     "appId": "com.uscg.amcr",
-    "productName": "Aircraft Materiel Condition Report",
+    "productName": "S.P.A.R.K. (Status, Parts, Aircraft Readiness & Kits)",
     "directories": {
       "output": "dist_electron"
     },
@@ -50,7 +50,7 @@
     ],
     "extraFiles": [
       {
-        "from": "sitrep-config.json",
+        "from": "spark-config.json",
         "to": "."
       }
     ],

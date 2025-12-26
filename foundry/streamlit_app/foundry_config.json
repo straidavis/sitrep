@@ -1,0 +1,15 @@
+{
+    "MODE": "local",
+    "FOUNDRY_URL": "https://<your-stack>.palantirfoundry.com",
+    "FOUNDRY_TOKEN": "YOUR_API_TOKEN_HERE",
+    "DATASETS": {
+        "flights": "ri.foundry.main.dataset.8c2b1cb4-b9a7-47ac-91e5-f4fd20d6b603",
+        "equipment": "ri.foundry.main.dataset.6fe48ad7-c0c9-45a6-b1fa-f398ea5b83a5",
+        "deployments": "ri.foundry.main.dataset.73cbe733-dd1f-427e-907d-d147483fc4bc",
+        "inventory": "ri.foundry.main.dataset.0237456f-b4d2-4fc2-b105-d4908e97a815",
+        "parts_utilization": "ri.foundry.main.dataset.1d21f9e4-c99e-444d-b1cc-8785ea0b3222",
+        "kits": "ri.foundry.main.dataset.c32685a4-e09c-4f8f-be88-425122caea7f",
+        "shipping": "ri.foundry.main.dataset.89309691-6ecf-4281-a0b4-256bb33979bf",
+        "service_bulletins": "ri.foundry.main.dataset.sb-mock-rid"
+    }
+}

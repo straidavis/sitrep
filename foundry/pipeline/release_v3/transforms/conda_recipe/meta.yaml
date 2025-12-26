@@ -1,0 +1,25 @@
+package:
+  name: spark-transforms
+  version: 0.1.0
+
+source:
+  path: ../src
+
+build:
+  script: {{ PYTHON }} -m pip install . -vv
+
+requirements:
+  host:
+    - python
+    - setuptools
+    - pip
+
+  run:
+    - python
+    - pyspark
+    - transforms
+
+about:
+  home: https://example.com
+  license: MIT
+  summary: 'SPARK Foundry Transforms Package'

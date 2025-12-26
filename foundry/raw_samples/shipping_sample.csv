@@ -1,0 +1,3 @@
+tracking_number,carrier,origin,destination,estimated_arrival,actual_arrival,status,priority,items,shipped_date,created_at,notes
+TRK123456789,FedEx,San Diego,USS Midgett,2025-12-01,2025-12-02,In Transit,High,"[{""part"": ""Motor"", ""qty"": 1}]",2025-11-25,2025-11-25,Delayed at customs
+TRK987654321,DHL,Norfolk,USS Gerald Ford,2025-12-05,,Delivered,Standard,"[{""part"": ""Propeller"", ""qty"": 4}]",2025-11-20,2025-11-20,Left at reception

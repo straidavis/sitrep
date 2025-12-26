@@ -1,0 +1,12 @@
+
+// ============================================================
+// CRITICAL FIX: MISSING 'patch' TASK
+// ============================================================
+// The build system is trying to run a task named 'patch', but it is not defined.
+// You MUST append this code to the BOTTOM of your root 'build.gradle' file.
+
+task patch {
+    doLast {
+        println("Patch task running... (Manually added fix)")
+    }
+}
