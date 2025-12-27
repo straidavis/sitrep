@@ -1,4 +1,5 @@
-part_number,serial_number,description,category,quantity_on_hand,min_quantity,location,condition,expiration_date,last_counted,measured_unit,notes
-PN-BAT-01,SN-B-101,Lipo Battery 6S,Batteries,12,5,Storage A,New,2026-01-01,2025-11-01,Each,Batch 55
-PN-SERVO-09,,Micro Servo,Electronics,50,20,Bin 5,Used,,2025-11-10,Each,Salvaged from wreck
-PN-WING-L,,Left Wing Assy,Airframe,4,2,Rack 1,Repairable,,2025-11-15,Each,Needs inspection
+part_number,description,category,quantity_on_hand,min_quantity,expiration_date,last_counted,measured_unit,notes,deployment_id
+PN-001,Gasket,Consumable,20,5,2026-01-01,2025-12-01,Each,,DEP-001
+PN-002,Seal,Consumable,50,10,2026-06-01,2025-12-01,Each,,DEP-001
+PN-003,Filter,Consumable,5,2,2025-12-31,2025-12-01,Each,,DEP-001
+PN-101,Propeller Blade,Rotable,4,2,,2025-12-01,Each,,DEP-002

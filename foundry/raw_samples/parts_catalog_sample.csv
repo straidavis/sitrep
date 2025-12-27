@@ -1,0 +1,6 @@
+id,part_number,description,category,created_at
+1,PN-001,Gasket,Consumable,2025-01-01
+2,PN-002,Seal,Consumable,2025-01-01
+3,PN-003,Filter,Consumable,2025-01-01
+4,PN-005,Screw,Consumable,2025-01-01
+5,PN-010,Propeller,Rotable,2025-01-01

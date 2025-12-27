@@ -1,3 +1,4 @@
-part_number,serial_number,description,quantity_used,mission_id,aircraft_id,date_used,technician,reason_for_replacement,notes
-PN-MOTOR-01,SN-M-001,Main Motor,1,M-20251116-01,VBAT-001,2025-11-16,John Doe,Wear and tear,Replaced during routine maintenance
-PN-PROP-22,SN-P-099,Carbon Propeller,1,M-20251117-03,VBAT-004,2025-11-17,Jane Smith,Impact damage,Chipped during rough landing
+part_number,serial_number,description,quantity_used,aircraft_id,date_used,reason_for_replacement,notes,deployment_id
+PN-005,,Screw,2,VBAT-001,2025-12-26,Worn out,,DEP-001
+PN-020,,Bolt,4,VBAT-002,2025-12-26,Missing,,DEP-001
+PN-100,,Lens Wipe,1,VBAT-001,2025-12-26,Routine maintenance,,DEP-001

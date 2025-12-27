@@ -1,3 +1,3 @@
-kit_name,kit_number,components,status,location,assigned_to,last_inspected,notes
-Deployment Kit A,DK-001,"[{""part"": ""Tools"", ""qty"": 1}, {""part"": ""Spares"", ""qty"": 10}]",Ready,Shelf 2,Team Alpha,2025-10-20,Complete and sealed
-Emergency Repair Kit,ERK-05,"[{""part"": ""Tape"", ""qty"": 5}, {""part"": ""Glue"", ""qty"": 2}]",Incomplete,Go Bag 1,,2025-11-05,Missing superglue
+kit_number,kit_name,components,status,location,assigned_to,last_inspected,notes,deployment_id
+KIT-001,Maintenance Kit A,PN-005;PN-010,Complete,Hangar,Technician A,2025-12-01,,DEP-001
+KIT-002,Sensor cleaning kit,PN-100;PN-200,Incomplete,Store,Technician B,2025-12-01,Missing sensor module,DEP-002

@@ -1,3 +1,8 @@
-Date,Serial Number,equipment_type,Category,Status,location,Software,comments,last_updated
-2025-11-01,VBAT-001,UAV,Airframe,FMC,Hangar 1,v2.4.1,Ready for mission,2025-11-20
-2025-11-05,GCS-02,GCS,Ground Station,NMC,Repair Shop,v1.0.0,Screen broken,2025-11-18
+Serial Number,equipment_type,Category,Status,Location,Software,Comments,Date,Deployment ID
+VBAT-001,V-BAT 001,Aircraft,FMC,Hangar,v2.1,Ready for mission,2025-12-26,DEP-001
+VBAT-002,V-BAT 002,Aircraft,NMC,Deck,v2.1,Propeller damage,2025-12-26,DEP-001
+VBAT-003,V-BAT 003,Aircraft,PMC,Hangar,v2.0,Sensor calibration needed,2025-12-26,DEP-001
+EO-901,EO Payload,Payload,FMC,Store,v1.5,,2025-12-26,DEP-001
+GCS-101,MaxVision GCS,GCS,FMC,Control Room,v3.0,,2025-12-26,DEP-001
+VBAT-004,V-BAT 004,Aircraft,FMC,Site B,v2.1,,2025-12-26,DEP-002
+VBAT-005,V-BAT 005,Aircraft,NMC,Lost at Sea,v2.1,Recovered,2025-12-26,DEP-002

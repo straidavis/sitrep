@@ -13,7 +13,11 @@ class MockDB:
                 'inventory': pd.DataFrame(),
                 'kits': pd.DataFrame(),
                 'service_bulletins': pd.DataFrame(),
-                'parts_utilization': pd.DataFrame()
+                'parts_utilization': pd.DataFrame(),
+                'deployments': pd.DataFrame(),
+                'shipping': pd.DataFrame(),
+                'shipment_items': pd.DataFrame(),
+                'kit_items': pd.DataFrame()
             }
             
     def get_table(self, table_name: str):

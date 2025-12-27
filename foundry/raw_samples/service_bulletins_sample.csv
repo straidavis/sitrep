@@ -1,0 +1,3 @@
+sb_number,date_issued,description,link,notes,applicable_deployment_ids,effected_equipment,created_at,last_updated_by
+SB-2025-001,2025-10-01,Propeller Assembly Inspection,http://docs.shield.ai/sb/001,,["DEP-001"],{"DEP-001": ["Complete", "Partial"]},2025-10-01,System
+SB-2025-002,2025-11-15,Firmware 2.0 Update,http://docs.shield.ai/sb/002,,["DEP-001", "DEP-002"],{"DEP-001": ["N/A"], "DEP-002": ["Not Complete"]},2025-11-15,System

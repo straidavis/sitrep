@@ -29,8 +29,9 @@ FLIGHT_SCHEMA = StructType([
     StructField("number_of_launches", IntegerType(), True),
     StructField("contraband_lbs", DoubleType(), True),
     StructField("detainees", IntegerType(), True),
-    StructField("responsible_party", StringType(), True),
-    StructField("deployment_id", StringType(), True)
+    StructField("responsible_part", StringType(), True),
+    StructField("deployment_id", StringType(), True),
+    StructField("updated_by", StringType(), True)
 ])
 
 EQUIPMENT_SCHEMA = StructType([
@@ -151,6 +152,14 @@ KIT_ITEMS_SCHEMA = StructType([
     StructField("last_updated_by", StringType(), True)
 ])
 
+PARTS_CATALOG_SCHEMA = StructType([
+    StructField("id", IntegerType(), False),
+    StructField("part_number", StringType(), True),
+    StructField("description", StringType(), True),
+    StructField("category", StringType(), True),
+    StructField("created_at", DateType(), True)
+])
+
 # ==========================================
 # CONFIGURATION
 # ==========================================
@@ -165,6 +174,7 @@ RAW_KITS_PATH = "ri.foundry.main.dataset.c32685a4-e09c-4f8f-be88-425122caea7f"
 RAW_SERVICE_BULLETINS_PATH = "ri.foundry.main.dataset.sb-mock-rid"
 RAW_SHIPMENT_ITEMS_PATH = "ri.foundry.main.dataset.shipment-items-mock-rid"
 RAW_KIT_ITEMS_PATH = "ri.foundry.main.dataset.kit-items-mock-rid"
+RAW_PARTS_CATALOG_PATH = "ri.foundry.main.dataset.parts-catalog-mock-rid"
 
 # 2. INTERMEDIATE OUTPUTS
 CLEAN_FLIGHTS_PATH = "/Shield AI-6bcac2/SPARK/src/Clean/flights_clean"
@@ -177,6 +187,7 @@ CLEAN_KITS_PATH = "/Shield AI-6bcac2/SPARK/src/Clean/kits_clean"
 CLEAN_SERVICE_BULLETINS_PATH = "/Shield AI-6bcac2/SPARK/src/Clean/service_bulletins_clean"
 CLEAN_SHIPMENT_ITEMS_PATH = "/Shield AI-6bcac2/SPARK/src/Clean/shipment_items_clean"
 CLEAN_KIT_ITEMS_PATH = "/Shield AI-6bcac2/SPARK/src/Clean/kit_items_clean"
+CLEAN_PARTS_CATALOG_PATH = "/Shield AI-6bcac2/SPARK/src/Clean/parts_catalog_clean"
 
 # 3. FINAL ONTOLOGY OBJECT
 ONTOLOGY_FLIGHT_PATH = "/Shield AI-6bcac2/SPARK/src/Ontology/FlightEvent"
@@ -388,6 +399,15 @@ def clean_kit_items(ctx, source_df, output):
     pdf = source_df.dataframe()
     pdf["id"] = range(1, 1 + len(pdf))
     output.write_pandas(robust_select(pdf, KIT_ITEMS_SCHEMA))
+
+@transform.using(
+    source_df=Input(RAW_PARTS_CATALOG_PATH),
+    output=Output(CLEAN_PARTS_CATALOG_PATH)
+)
+def clean_parts_catalog(ctx, source_df, output):
+    pdf = source_df.dataframe()
+    pdf["id"] = range(1, 1 + len(pdf))
+    output.write_pandas(robust_select(pdf, PARTS_CATALOG_SCHEMA))
 
 @transform.using(
     flights=Input(CLEAN_FLIGHTS_PATH),

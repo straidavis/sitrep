@@ -1,3 +1,4 @@
-Deployment ID,Name,location,Start Date,End Date,Status,Type,notes
-DEP-2025-001,Pacific Sentry,USS Midgett,2025-01-01,2025-06-30,Active,Shipboard,Primary deployment
-DEP-2025-002,Red Flag,Nellis AFB,2025-08-01,2025-08-15,Planned,Land,Training exercise
+Deployment ID,Name,Type,Status,Start Date,End Date,Location,Notes,user_emails
+DEP-001,USCG Cutter James,Ship,Active,2025-11-01,2026-05-01,Atlantic,Standard patrol,user1@example.com
+DEP-002,Land Base Alpha,Land,Active,2025-10-15,2026-04-15,Base Alpha,Training deployment,user2@example.com
+DEP-003,Forward Operating Base Charlie,Land,Planning,2026-01-01,,FOB Charlie,Future ops,

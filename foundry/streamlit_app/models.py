@@ -22,6 +22,8 @@ class Flight:
     contraband_lbs: float = 0.0
     detainees: int = 0
     tois: int = 0
+    responsible_part: Optional[str] = None
+    updated_by: Optional[str] = None
     
     @property
     def is_complete(self):

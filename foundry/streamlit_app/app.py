@@ -16,11 +16,25 @@ from models import Flight
 # CONFIGURATION
 # ==========================================
 st.set_page_config(
-    page_title="S.P.A.R.K. | Readiness System",
-    page_icon="✈️",
+    page_title="S.P.A.R.K.",
+    page_icon="logo.png",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# --- HEADER (Branding) ---
+try:
+    c_brand1, c_brand2 = st.columns([1, 15])
+    with c_brand1:
+        st.image("logo.png", width=65)
+    with c_brand2:
+         st.markdown("""
+            <h1 style='padding-top: 0px; margin-bottom: -10px; font-size: 3rem;'>S.P.A.R.K.</h1>
+            <span style='font-size: 1.2em; font-weight: bold; color: #888;'>Status, Parts, Aircraft Readiness & Kits</span>
+         """, unsafe_allow_html=True)
+except Exception:
+    st.title("S.P.A.R.K.")
+    st.caption("Status, Parts, Aircraft Readiness & Kits")
 
 # Initialize MockDB (Single Instance per Session)
 if 'mock_db' not in st.session_state:
@@ -57,6 +71,17 @@ st.markdown("""
     
     /* Navigation Menu Styling */
     div[data-testid="stSidebarNav"] { display: none; } 
+    
+    /* Minimize Top Padding */
+    .block-container {
+        padding-top: 10px !important;
+        padding-bottom: 1rem !important;
+        margin-top: 0px !important;
+    }
+    
+    /* Compact Header */
+    header { visibility: hidden; } /* Hide the hamburger menu header if desired, or just move content up */
+    .main > div { padding-top: 0rem; } 
     
     /* Full width buttons in sidebar */
     section[data-testid="stSidebar"] button {
@@ -128,7 +153,10 @@ DATASETS = {
     "parts_utilization": "ri.foundry.main.dataset.1d21f9e4-c99e-444d-b1cc-8785ea0b3222",
     "kits": "ri.foundry.main.dataset.c32685a4-e09c-4f8f-be88-425122caea7f",
     "shipping": "ri.foundry.main.dataset.89309691-6ecf-4281-a0b4-256bb33979bf",
-    "service_bulletins": "ri.foundry.main.dataset.sb-mock-rid"
+    "service_bulletins": "ri.foundry.main.dataset.sb-mock-rid",
+    "shipment_items": "ri.foundry.main.dataset.shipment-items-mock-rid",
+    "kit_items": "ri.foundry.main.dataset.kit-items-mock-rid",
+    "parts_catalog": "ri.foundry.main.dataset.parts-catalog-mock-rid"
 }
 
 def load_data_initial():
@@ -154,7 +182,11 @@ def load_data_initial():
             st.session_state['db_state']['inventory'] = backend.read_dataset("inventory")
             st.session_state['db_state']['service_bulletins'] = backend.read_dataset("service_bulletins")
             st.session_state['db_state']['kits'] = backend.read_dataset("kits")
-            st.session_state['shipping'] = backend.read_dataset("shipping")
+            st.session_state['db_state']['shipping'] = backend.read_dataset("shipping")
+            st.session_state['db_state']['shipment_items'] = backend.read_dataset("shipment_items")
+            st.session_state['db_state']['parts_utilization'] = backend.read_dataset("parts_utilization")
+            st.session_state['db_state']['kit_items'] = backend.read_dataset("kit_items")
+            st.session_state['db_state']['parts_catalog'] = backend.read_dataset("parts_catalog")
             
             # Basic validation to fallback if API fails
             if st.session_state['db_state']['flights'].empty:
@@ -186,9 +218,8 @@ def populate_mock_data():
         "detainees": [3,0,0,12,0,1,0,0,2,0,1,0,0,4],
         "tois": [1,0,1,5,0,1,0,0,1,0,1,0,0,2],
         "deployment_id": ["DEP-001"] * 7 + ["DEP-002"] * 7,
-        "deployment_id": ["DEP-001"] * 7 + ["DEP-002"] * 7,
         "notes": ["Standard patrol", "Nothing significant", "Engine temp high", "Big bust", "Weather delay", "", "", "Weather CNX", "", "", "", "", "Crew rest", ""],
-        "responsible_part": ["N/A", "N/A", "Avionics", "N/A", "Weather", "N/A", "N/A", "Weather", "N/A", "N/A", "N/A", "N/A", "Crew", "N/A"],
+        "responsible_part": ["N/A", "N/A", "Shield AI", "N/A", "Weather", "N/A", "N/A", "Weather", "N/A", "N/A", "N/A", "N/A", "Crew", "N/A"],
         "updated_by": ["System", "System", "Admin", "System", "MetOc", "System", "System", "MetOc", "System", "System", "System", "System", "Admin", "System"]
     })
     st.session_state['db_state']['flights'] = flights_data
@@ -240,12 +271,64 @@ def populate_mock_data():
     st.session_state['db_state']['service_bulletins'] = sb_data
 
     # 6. Shipping
-    st.session_state['shipping'] = pd.DataFrame({
-        "uid": ["SHP-1001", "SHP-1002", "SHP-1003"],
+    st.session_state['db_state']['shipping'] = pd.DataFrame({
+        "id": [1001, 1002, 1003],
+        "tracking_number": ["TRK-987654321", "TRK-123456789", "TRK-456123789"],
+        "carrier": ["FedEx", "DHL", "UPS"],
         "deployment_id": ["DEP-001", "DEP-001", "DEP-002"],
         "status": ["In Transit", "Received (Site)", "Ordered"],
         "order_date": [datetime.now() - timedelta(days=5), datetime.now() - timedelta(days=20), datetime.now() - timedelta(days=1)],
         "item_count": [12, 55, 3]
+    })
+    
+    # 7. Shipment Items (Mock)
+    st.session_state['db_state']['shipment_items'] = pd.DataFrame({
+        "id": range(1, 4),
+        "shipment_id": [1002, 1001, 1002],
+        "part_number": ["PN-001", "PN-005", "PN-010"],
+        "quantity": [10, 5, 20],
+        "description": ["Gasket", "Screw", "Propeller"]
+    })
+
+    # 8. Kits (Mock)
+    st.session_state['db_state']['kits'] = pd.DataFrame({
+        "id": [1, 2],
+        "kit_number": ["KIT-001", "KIT-002"],
+        "kit_name": ["Maintenance Kit A", "Sensor cleaning kit"],
+        "status": ["Complete", "Incomplete"],
+        "deployment_id": ["DEP-001", "DEP-002"]
+    })
+    
+    # 9. Parts Utilization (Mock)
+    st.session_state['db_state']['parts_utilization'] = pd.DataFrame({
+        "id": [1, 2, 3],
+        "part_number": ["PN-005", "PN-020", "PN-100"],
+        "description": ["Screw", "Bolt", "Lens Wipe"],
+        "quantity_used": [2, 4, 1],
+        "aircraft_id": ["VBAT-001", "VBAT-002", "VBAT-001"],
+        "date_used": [date.today(), date.today(), date.today()],
+        "deployment_id": ["DEP-001", "DEP-001", "DEP-001"]
+    })
+
+    # 10. Kit Items (Mock)
+    st.session_state['db_state']['kit_items'] = pd.DataFrame({
+        "id": range(1, 5),
+        "kit_id": [1, 1, 2, 2],
+        "part_number": ["PN-005", "PN-010", "PN-100", "PN-200"],
+        "description": ["Screw", "Propeller", "Lens Wipe", "Sensor Module"],
+        "quantity": [10, 1, 5, 1],
+        "actual_quantity": [10, 1, 3, 1], # Kit 2 is incomplete
+        "serial_number": ["N/A", "N/A", "N/A", "SN-999"],
+        "category": ["Consumable", "Rotable", "Consumable", "Rotable"]
+    })
+
+    # 11. Parts Catalog (Mock)
+    st.session_state['db_state']['parts_catalog'] = pd.DataFrame({
+        "id": range(1, 6),
+        "part_number": ["PN-001", "PN-002", "PN-003", "PN-005", "PN-010"],
+        "description": ["Gasket", "Seal", "Filter", "Screw", "Propeller"],
+        "category": ["Consumable", "Consumable", "Consumable", "Consumable", "Rotable"],
+        "created_at": [date.today()] * 5
     })
 
 
@@ -264,6 +347,28 @@ def view_dashboard():
     flights_df = db.get_table('flights')
     equip_df = db.get_table('equipment')
     dep_df = db.get_table('deployments')
+    
+    # --- Filter ---
+    # Global Dashboard Filter
+    dep_options = ["All"] + list(dep_df['name'].unique()) if not dep_df.empty and 'name' in dep_df.columns else ["All"] + list(dep_df['deployment_id'].unique())
+    sel_dep = st.selectbox("Filter by Deployment", dep_options)
+    
+    # Apply Filter to Data
+    if sel_dep != "All":
+        # Resolve Name back to ID if needed, or filter by Name if we merge. 
+        # Simpler: Get valid IDs for name.
+        if 'name' in dep_df.columns:
+            valid_ids = dep_df[dep_df['name'] == sel_dep]['deployment_id'].tolist()
+            flights_df = flights_df[flights_df['deployment_id'].isin(valid_ids)]
+            equip_df = equip_df[equip_df['deployment_id'].isin(valid_ids)]
+            # We don't filter dep_df itself usually so we can still show context, 
+            # but for active count logic, we might want to? 
+            # Actually user said "allow all metrics to be filtered".
+            # "Active Deployments" metric might just become 1 or 0 if filtered?
+            # Let's keep dep_df as lookups, but maybe filter 'active' count logic.
+        else:
+            flights_df = flights_df[flights_df['deployment_id'] == sel_dep]
+            equip_df = equip_df[equip_df['deployment_id'] == sel_dep]
     
     # --- Top Stats ---
     c1, c2, c3, c4 = st.columns(4)
@@ -296,12 +401,22 @@ def view_dashboard():
         </div>
         """, unsafe_allow_html=True)
     with c4:
-        active = len(dep_df[dep_df['status'] == 'Active'])
+        # If filtered, this just shows if selected is active. If All, shows count of active.
+        if sel_dep == "All":
+             active = len(dep_df[dep_df['status'] == 'Active'])
+        else:
+             # Check if selected is active
+             # We need to look up status of selected.
+             if 'name' in dep_df.columns:
+                 active = len(dep_df[(dep_df['name'] == sel_dep) & (dep_df['status'] == 'Active')])
+             else:
+                 active = len(dep_df[(dep_df['deployment_id'] == sel_dep) & (dep_df['status'] == 'Active')])
+                 
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">Active Deployments</div>
             <div class="metric-value">{active}</div>
-            <div class="metric-sub">Current Missions</div>
+            <div class="metric-sub">{'In Selection' if sel_dep != 'All' else 'Current Missions'}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -319,6 +434,117 @@ def view_dashboard():
         st.metric("Contraband Seized (lbs)", f"{contraband:,.0f}")
     with o3:
         st.metric("Detainees", int(detainees))
+    
+    # --- System Performance (New) -- Date Based Stacked ---
+    st.divider()
+    st.subheader("Mission Performance")
+    
+    if not flights_df.empty:
+        # Prepare Data
+        # We need Date, Name, Hours, Valid MRR/OFTR flags
+        
+        # Join Dep Name
+        if 'name' in dep_df.columns:
+             merged_df = flights_df.merge(dep_df[['deployment_id', 'name']], on='deployment_id', how='left')
+        else:
+             merged_df = flights_df.copy()
+             merged_df['name'] = merged_df['deployment_id']
+             
+        # Aggregate for Stacked Bar (Group by Date + Deployment)
+        # We want to stack by Deployment Name.
+        daily_stack = merged_df.groupby(['date', 'name'])['flight_hours'].sum().reset_index()
+        
+        # Aggregate for Lines (Group by Date only, calculating weighted rate)
+        # Group by Date
+        daily_metrics = []
+        for d in merged_df['date'].unique():
+            day_df = merged_df[merged_df['date'] == d]
+            
+            n_complete = len(day_df[day_df['status'] == 'COMPLETE'])
+            n_delayed = len(day_df[day_df['status'] == 'DELAY'])
+            n_cnx_shield = len(day_df[(day_df['status'] == 'CNX') & (day_df['responsible_part'] == 'Shield AI')])
+            
+            denom_mrr = n_complete + n_delayed + n_cnx_shield
+            mrr = ((n_complete + n_delayed) / denom_mrr) if denom_mrr > 0 else None # None to skip plotting point? Or 0?
+            
+            denom_oftr = n_complete + n_delayed
+            oftr = (n_complete / denom_oftr) if denom_oftr > 0 else None
+            
+            daily_metrics.append({
+                "date": d,
+                "MRR": mrr,
+                "OFTR": oftr
+            })
+        metrics_df = pd.DataFrame(daily_metrics).sort_values('date')
+        
+        # Build Chart
+        fig = go.Figure()
+        
+        # 1. Stacked Bars (Iterate deployments)
+        # Get list of deployments present in this filtered view
+        present_deps = daily_stack['name'].unique()
+        # Color map? Plotly handles auto colors but custom is nice.
+        
+        for dep in present_deps:
+            dep_data = daily_stack[daily_stack['name'] == dep]
+            fig.add_trace(go.Bar(
+                x=dep_data['date'],
+                y=dep_data['flight_hours'],
+                name=str(dep),
+                # marker_color... let auto-assign or map
+            ))
+            
+        fig.update_layout(barmode='stack')
+        
+        # 2. Line - MRR (Right Y)
+        fig.add_trace(go.Scatter(
+            x=metrics_df['date'],
+            y=metrics_df['MRR'],
+            name='Daily MRR',
+            mode='lines+markers',
+            line=dict(color='#4CAF50', width=3),
+            yaxis='y2',
+            connectgaps=True # If some days have no flights
+        ))
+        
+        # 3. Line - OFTR (Right Y)
+        fig.add_trace(go.Scatter(
+            x=metrics_df['date'],
+            y=metrics_df['OFTR'],
+            name='Daily OFTR',
+            mode='lines+markers',
+            line=dict(color='#FFC107', width=3, dash='dot'),
+            yaxis='y2',
+            connectgaps=True
+        ))
+        
+        # Layout
+        fig.update_layout(
+            title="Daily Flight Hours & Reliability (Stacked by Deployment)",
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(title="Date"),
+            yaxis=dict(
+                title="Flight Hours",
+                gridcolor='#333'
+            ),
+            yaxis2=dict(
+                title="Rate",
+                overlaying='y',
+                side='right',
+                tickformat='.0%',
+                range=[0, 1.1],
+                gridcolor='#333'
+            ),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        
+        st.plotly_chart(fig, width="stretch", use_container_width=True)
+    else:
+        st.info("No flight data available to calculate performance metrics.")
+
+
 
     # --- Charts ---
     st.divider()
@@ -358,40 +584,9 @@ def view_flights():
         row['deployment_id']: f"{row['deployment_id']}: {row['name']}"
         for _, row in deps_df.iterrows()
     }
+    all_deps = deps_df['deployment_id'].unique().tolist()
     
-    # 1. Filters (Parity with Flights.jsx)
-    with st.sidebar:
-        st.subheader("Filters")
-        
-        # Deployment Filter
-        all_deps = deps_df['deployment_id'].unique().tolist()
-        sel_deps = st.multiselect(
-            "Deployments", 
-            all_deps, 
-            default=all_deps,
-            format_func=lambda x: dep_map.get(x, x) # Show Name, Return ID
-        )
-        
-        # Status Filter
-        all_stats = ["COMPLETE", "CNX", "DELAY", "ABORTED"]
-        sel_stat = st.multiselect("Status", all_stats, default=all_stats)
-        
-        # Date Filter
-        d_col1, d_col2 = st.columns(2)
-        start_d = d_col1.date_input("Start Date", value=date(2025, 1, 1))
-        end_d = d_col2.date_input("End Date", value=date(2025, 12, 31))
-
-    # Apply Filters
-    filtered = df.copy()
-    if sel_deps:
-        filtered = filtered[filtered['deployment_id'].isin(sel_deps)]
-    if sel_stat:
-        # Case insensitive match
-        filtered = filtered[filtered['status'].str.upper().isin(sel_stat)]
-    if start_d:
-        filtered = filtered[filtered['date'] >= start_d]
-    if end_d:
-        filtered = filtered[filtered['date'] <= end_d]
+    # Filters moved to Main Data Table section
 
     # 2. Actions (Add / Import)
     
@@ -493,7 +688,7 @@ def view_flights():
             
             f_dep_id = r1c4.selectbox(
                 lbl_dep, 
-                sel_deps, 
+                all_deps, 
                 key="new_f_dep",
                 format_func=lambda x: dep_map.get(x, x)
             )
@@ -669,6 +864,43 @@ def view_flights():
 
     # 3. Main Data Table
     
+    # --- FILTERS ---
+    flt_c1, flt_c2, flt_c3 = st.columns([2, 1, 2])
+    
+    with flt_c1:
+        # Deployment: Multiselect
+        sel_deps = st.multiselect(
+            "Deployments", 
+            all_deps, 
+            default=[],
+            format_func=lambda x: dep_map.get(x, x)
+        )
+        
+    with flt_c2:
+        # Status: Multiselect
+        all_stats = ["COMPLETE", "CNX", "DELAY", "ABORTED", "ALERT - NO LAUNCH"]
+        sel_stat = st.multiselect("Status", all_stats, default=[])
+        
+    with flt_c3:
+        # Date: Range
+        d_c1, d_c2 = st.columns(2)
+        start_d = d_c1.date_input("Start", value=date(2025, 1, 1))
+        end_d = d_c2.date_input("End", value=date(2025, 12, 31))
+        
+    # Apply Logic
+    filtered = df.copy()
+    if sel_deps:
+        filtered = filtered[filtered['deployment_id'].isin(sel_deps)]
+    if sel_stat:
+        filtered = filtered[filtered['status'].str.upper().isin(sel_stat)]
+    if start_d:
+        filtered = filtered[filtered['date'] >= start_d]
+    if end_d:
+        filtered = filtered[filtered['date'] <= end_d]
+        
+    st.divider()
+    # ----------------
+    
     # Toggle Edit Mode
     c_lock, c_title = st.columns([1, 5])
     is_unlocked = c_lock.checkbox("🔓 Unlock Table", key="flights_unlock", help="Enable inline editing")
@@ -681,11 +913,12 @@ def view_flights():
         editor_df = filtered.copy()
         
         # Create Composite Column for Editor
-        # We will allow editing this dropdown, which means we need to handle the save back to ID
         editor_df['deployment_select'] = editor_df['deployment_id'].map(dep_map)
         
-        # To avoid confusion, we Hide 'deployment_id' and show 'deployment_select'
-        
+        # Reorder columns: Deployment first, remove Mission Number
+        cols = ['deployment_select', 'date', 'aircraft_number', 'status', 'responsible_part', 'reason_for_delay', 'contraband_lbs', 'flight_hours', 'id', 'deployment_id', 'updated_by']
+        editor_df = editor_df[cols]
+
         edited_df = st.data_editor(
             editor_df,
             width="stretch",
@@ -695,7 +928,7 @@ def view_flights():
                 "id": None, # Hide ID
                 "deployment_id": None, # Hide Raw ID (we use Select)
                 "date": st.column_config.DateColumn("Date", format="YYYY-MM-DD", required=True),
-                "mission_number": st.column_config.TextColumn("Mission", required=True),
+                # "mission_number": Drop,
                 "aircraft_number": st.column_config.SelectboxColumn("Aircraft", options=["VBAT-001", "VBAT-002", "VBAT-003"]),
                 "status": st.column_config.SelectboxColumn("Status", options=["COMPLETE", "CNX", "DELAY", "ABORTED"]),
                 "responsible_part": st.column_config.SelectboxColumn("Resp. Part", options=list(CANCELLATION_REASONS.keys()) + ["N/A"]),
@@ -758,33 +991,30 @@ def view_flights():
         display_df = filtered.copy()
         display_df['Deployment'] = display_df['deployment_id'].map(dep_map)
         
-        # Drop ID cols from Display
-        # Keep 'id' in a separate var if we needed it for selection, but st.dataframe selection returns index.
-        # We should reset_index to ensure 0-based index matches selection if we filtered? 
-        # WARNING: filtered is a slice. reset_index is crucial for correct selection mapping!
-        display_df = display_df.reset_index(drop=True)
+        # Drop ID cols and Mission Number
+        display_df = display_df.drop(columns=['id', 'deployment_id', 'mission_number'], errors='ignore')
+
+        # Reorder: Deployment First
+        cols = ['Deployment'] + [c for c in display_df.columns if c != 'Deployment']
+        display_df = display_df[cols]
         
         # Style Logic
         def style_responsible(val):
+            # Soft Highlighting: Blue Grey Text + Soft Bg
             if isinstance(val, str) and val.lower() == 'shield ai':
-                return 'color: #F44336; font-weight: bold;'
+                return 'color: #455A64; font-weight: bold; background-color: #ECEFF1;'
             return ''
 
-        # Apply Style
         styled_df = display_df.style.map(style_responsible, subset=['responsible_part'])
 
-        event = st.dataframe(
+        st.dataframe(
             styled_df,
             width="stretch",
             height=600,
-            on_select="rerun",
-            selection_mode="single-row",
             column_config={
-                "id": None, # Hide ID from view
-                "deployment_id": None, # Hide Raw ID
                 "date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
                 "Deployment": st.column_config.TextColumn("Deployment"),
-                "mission_number": st.column_config.TextColumn("Mission", help="Mission ID"),
+                # "mission_number": Removed
                 "status": st.column_config.TextColumn("Status"),
                 "responsible_part": st.column_config.TextColumn("Resp. Part"),
                 "updated_by": st.column_config.TextColumn("Updated By"),
@@ -792,96 +1022,172 @@ def view_flights():
                 "flight_hours": st.column_config.NumberColumn("Hours", format="%.1f"),
             }
         )
-        
-        # Detail View
-        if len(event.selection.rows) > 0:
-            idx = event.selection.rows[0]
-            # Get data from the RESET index dataframe
-            selected_row = display_df.iloc[idx]
-            
-            st.markdown("### 📋 Flight Details")
-            
-            # Formatted Display
-            d1, d2 = st.columns(2)
-            with d1:
-                st.markdown(f"**Mission:** {selected_row['mission_number']}")
-                st.markdown(f"**Date:** {selected_row['date']}")
-                st.markdown(f"**Deployment:** {selected_row['Deployment']}")
-                st.markdown(f"**Status:** {selected_row['status']}")
-                st.markdown(f"**Aircraft:** {selected_row['aircraft_number']}")
-                
-            with d2:
-                st.markdown(f"**Resp. Party:** {selected_row['responsible_part']}")
-                st.markdown(f"**Reason:** {selected_row['reason_for_delay']}")
-                st.markdown(f"**Launch:** {selected_row['launch_time']} | **Land:** {selected_row['recovery_time']}")
-                st.markdown(f"**Hours:** {selected_row['flight_hours']}")
-                st.markdown(f"**Payload:** {selected_row['payload_1']}")
-
-            st.markdown("---")
-            
-            # Results & Notes
-            d3, d4 = st.columns(2)
-            with d3:
-                st.markdown("**Mission Results:**")
-                st.markdown(f"- **TOIs:** {selected_row.get('tois', 0)}")
-                st.markdown(f"- **Contraband:** {selected_row.get('contraband_lbs', 0)} lbs")
-                st.markdown(f"- **Detainees:** {selected_row.get('detainees', 0)}")
-            
-            with d4:
-                 st.markdown("**Notes:**")
-                 st.info(selected_row['notes'] if selected_row['notes'] else "No notes.")
 
 def view_equipment():
     st.title("Equipment Management")
-    df = db.get_table('equipment')
-    deployments = df['deployment_id'].unique()
     
-    st.info("💡 Edit status directly in the table below. Changes persist for this session.")
+    # 1. Fetch Data
+    eq_df = db.get_table('equipment')
+    dep_df = db.get_table('deployments')
     
-    for dep in deployments:
-        with st.expander(f"Deployment: {dep}", expanded=True):
-            dep_eq = df[df['deployment_id'] == dep]
-            
-            # Helper for color
-            def highlight_status(s):
-                if s == 'FMC': return 'background-color: rgba(76, 175, 80, 0.2); color: #4CAF50'
-                if s == 'NMC': return 'background-color: rgba(244, 67, 54, 0.2); color: #F44336'
-                if s == 'PMC': return 'background-color: rgba(255, 193, 7, 0.2); color: #FFC107'
-                return ''
+    # Map Deployment ID -> Name
+    if not dep_df.empty and 'name' in dep_df.columns:
+        dep_map = dict(zip(dep_df['deployment_id'], dep_df['name']))
+    else:
+        dep_map = {}
 
-           # Editable Dataframe
-            edited_df = st.data_editor(
-                dep_eq,
-                width="stretch",
-                key=f"editor_{dep}",
-                column_config={
-                    "status": st.column_config.SelectboxColumn(
-                        "Status",
-                        options=["FMC", "NMC", "PMC", "CAT5"],
-                        required=True
-                    ),
-                    "location": st.column_config.TextColumn("Location"),
-                    "comments": st.column_config.TextColumn("Comments")
-                },
-                disabled=["id", "serial_number", "equipment", "category", "deployment_id"],
-                hide_index=True
-            )
+    # 2. Controls
+    c_ctrl, c_legend = st.columns([1, 4])
+    is_edit_mode = c_ctrl.toggle("Enable Editing", key="equip_edit_mode")
+    
+    if not is_edit_mode:
+        with c_legend:
+            st.caption("Status Legend: 🟢 FMC (Fully Mission Capable) | 🟡 PMC (Partial) | 🔴 NMC (Non-Mission) | ⚫ CAT5 (Out of Service)")
+    
+    # 3. Iterate Deployments
+    # Use generic "Unassigned" if ID not found? Assuming all valid.
+    unique_deps = eq_df['deployment_id'].unique()
+    
+    # Add new deployment handling? User said "allow addition of new rows for each deployment". 
+    # If a deployment has NO equipment, it won't show up in unique_deps. 
+    # We should iterate through ALL Active Deployments instead.
+    active_deps = dep_df['deployment_id'].unique() if not dep_df.empty else unique_deps
+    
+    for dep_id in active_deps:
+        dep_name = dep_map.get(dep_id, "Unknown Deployment")
+        header_text = f"{dep_id} - {dep_name}"
+        
+        with st.expander(header_text, expanded=True):
+            # Filter Data
+            subset = eq_df[eq_df['deployment_id'] == dep_id].copy()
             
-            # Check for changes (Comparing manually or trusting session state update logic if we hooked it)
-            # Streamlit data_editor returns the new state. We need to update MockDB if changed.
-            if not edited_df.equals(dep_eq):
-                # Find diffs
-                # For simplicity in this mock, we just replace the rows in the main DB for this deployment
-                # In real app, we'd iterate and update specific IDs
+            if is_edit_mode:
+                # --- EDIT MODE ---
+                # Allow adding rows. To add a row to *this* deployment, we need to handle the new row having the correct deployment_id.
+                # data_editor 'num_rows="dynamic"' adds empty rows. We'd have to post-process to fill deployment_id?
+                # Or just let them save and fill it in?
+                # Better: Use a dedicated "Add" block or just trust user to fill?
+                # Actually, if we hide deployment_id col, user can't fill it.
+                # Strategy: We show all cols (except ID). User adds row. We inject dep_id on save.
                 
-                # Broad Update Strategy:
-                # 1. Drop old rows for this dep
-                current_full = db.get_table('equipment')
-                other_rows = current_full[current_full['deployment_id'] != dep]
-                # 2. Concat
-                updated_full = pd.concat([other_rows, edited_df], ignore_index=True)
-                st.session_state['db_state']['equipment'] = updated_full
-                st.toast(f"Updated Equipment for {dep}")
+                edited_subset = st.data_editor(
+                    subset,
+                    key=f"editor_{dep_id}",
+                    num_rows="dynamic",
+                    width="stretch",
+                    column_config={
+                        "status": st.column_config.SelectboxColumn("Status", options=["FMC", "PMC", "NMC", "CAT5"], required=True),
+                        "equipment": st.column_config.TextColumn("Equipment Name", required=True),
+                        "serial_number": st.column_config.TextColumn("Serial #", required=True),
+                        "category": st.column_config.SelectboxColumn("Category", options=["Aircraft", "GCS", "Payload", "Comms"]),
+                        "location": st.column_config.TextColumn("Location"),
+                        "comments": st.column_config.TextColumn("Comments"),
+                    },
+                    hide_index=True,
+                    disabled=["id", "deployment_id"] # Don't let them touch ID wiring
+                )
+                
+                # Save Logic
+                # If changes detected
+                if not edited_subset.equals(subset):
+                    # 1. Identify New Rows (missing 'deployment_id' or 'id' if we strictly rely on that)
+                    # Actually, filtered subset has valid IDs. New rows from editor usually have NaN or 0 defaults depending on schema?
+                    # Streamlit creates new rows with default values (None/NaN).
+                    
+                    # We need to grab the Full DB, remove old rows for this Dep, and insert the New Subset (with fixes)
+                    
+                    # Fix New Rows: Fill missing Deployment ID
+                    # Check for rows where deployment_id is NaN/None (newly added)
+                    # Note: subset came from filtered eq_df. New rows won't have the fixed value unless we set default?
+                    # We can't set hidden default easily. We just fillna.
+                    
+                    edited_subset['deployment_id'] = dep_id
+                    
+                    # 3. Merge Back
+                    full_df = db.get_table('equipment')
+                    # Drop old for this dep
+                    remaining = full_df[full_df['deployment_id'] != dep_id]
+                    
+                    # Assign new IDs to new rows if needed? 
+                    # If 'id' is empty/NaN, generate one.
+                    if 'id' in edited_subset.columns:
+                        # Simple valid max ID logic
+                        max_id = full_df['id'].max() if not full_df.empty else 0
+                        # Identify new rows (NaN id)
+                        # This depends on how st.data_editor handles numerical ID cols on new rows. Usually None.
+                        # We iterate and fix.
+                         # Vectorized fix difficult with increment. Loop ok for small data.
+                        for i, row in edited_subset.iterrows():
+                             if pd.isna(row['id']) or row['id'] == 0:
+                                 max_id += 1
+                                 edited_subset.at[i, 'id'] = max_id
+                    
+                    new_full = pd.concat([remaining, edited_subset], ignore_index=True)
+                    st.session_state['db_state']['equipment'] = new_full
+                    st.toast(f"Saved changes for {dep_id}")
+                    # Rerun to refresh view
+                    # st.rerun() # Be careful of loops. Toast is enough feedback usually, but rerun ensures IDs stick.
+            
+            else:
+                # --- READ ONLY (Styled) ---
+                # Apply Styling
+                def style_status(row):
+                    s = row['status']
+                    styles = [''] * len(row)
+                    
+                    # Base colors
+                    bg_color = ''
+                    txt_color = ''
+                    
+                    if s == 'FMC':
+                        bg_color = '#4CAF50' # Green
+                        txt_color = 'white'
+                    elif s == 'PMC':
+                        bg_color = '#FFC107' # Yellow
+                        txt_color = 'black'
+                    elif s == 'NMC':
+                        bg_color = '#F44336' # Red
+                        txt_color = 'white'
+                    elif s == 'CAT5':
+                        # Grey out entire row
+                        return ['background-color: #9E9E9E; color: #EEEEEE; opacity: 0.6'] * len(row)
+                    
+                    # Apply specific cell color to 'status' column only? 
+                    # User said "color code the status block". 
+                    # "CAT5 (grey - entire row greyed out)"
+                    
+                    # Create style list
+                    new_styles = []
+                    for col in row.index:
+                        if col == 'status' and bg_color:
+                            new_styles.append(f'background-color: {bg_color}; color: {txt_color}; font-weight: bold; border-radius: 4px;')
+                        else:
+                            new_styles.append('')
+                    return new_styles
+
+                # Apply
+                if not subset.empty:
+                    # Styling dataframe needs to act on the Styler object
+                    # We can use 'apply' row-wise
+                    styled = subset.style.apply(style_status, axis=1)
+                    
+                    st.dataframe(
+                        styled,
+                        width="stretch",
+                        column_config={
+                             "id": None, 
+                             "deployment_id": None,
+                             "status": st.column_config.TextColumn("Status"),
+                             "equipment": st.column_config.TextColumn("Equipment"),
+                             "serial_number": st.column_config.TextColumn("Serial #"),
+                             "category": st.column_config.TextColumn("Category"),
+                             "location": st.column_config.TextColumn("Location"),
+                             "comments": st.column_config.TextColumn("Comments")
+                        },
+                        hide_index=True
+                    )
+                else:
+                    st.info("No equipment assigned.")
 
 
 def view_inventory():
@@ -893,7 +1199,7 @@ def view_inventory():
     selected_dep = st.selectbox("Select Deployment", deps_df['deployment_id'].unique(), format_func=lambda x: f"{x} - {dep_names.get(x, '')}")
     
     inv_df = db.get_table('inventory')
-    shipping_df = st.session_state['shipping'] # Not in mock_db class yet, generic session
+    shipping_df = db.get_table('shipping') # Fixed access
     
     # Shipment Queue
     incoming = shipping_df[(shipping_df['deployment_id'] == selected_dep) & (shipping_df['status'] != 'Received (Site)')]
@@ -957,10 +1263,10 @@ def view_kits():
         dep_kits = kits_df[kits_df['deployment_id'] == dep]
         
         for _, kit in dep_kits.iterrows():
-            with st.expander(f"📦 {kit['kit_name']} (v{kit['version']})"):
+            with st.expander(f"📦 {kit['kit_name']} (SN: {kit.get('kit_number', 'N/A')})"):
                 c1, c2 = st.columns([1, 4])
                 with c1:
-                    st.markdown(f"**Items:** {kit['item_count']}")
+                    # st.markdown(f"**Items:** {kit['item_count']}") # Removed item_count if not in schema
                     if st.button("Edit Kit Details", key=f"edit_kit_{kit['id']}"):
                         st.session_state[f"editing_kit_{kit['id']}"] = True
                 
@@ -970,13 +1276,51 @@ def view_kits():
                 # Upload logic for specific kit updates could go here
                 
     st.divider()
-    with st.expander("Import New Kit Definition"):
-        st.file_uploader("Upload Kit Excel", key="kit_upload")
-
     st.divider()
     with st.expander("Import New Kit Definition"):
-        st.file_uploader("Upload Kit Excel", key="kit_upload")
-
+        st.info("Upload a Kit Excel file to add it to a deployment.")
+        
+        # Deployment Selector
+        dep_df = db.get_table('deployments')
+        
+        # Create Map for ID -> Name
+        dep_map = {}
+        if not dep_df.empty and 'name' in dep_df.columns:
+            dep_map = dict(zip(dep_df['deployment_id'], dep_df['name']))
+        
+        valid_deps = dep_df['deployment_id'].unique() if not dep_df.empty else []
+        
+        c_imp1, c_imp2 = st.columns(2)
+        target_dep = c_imp1.selectbox(
+            "Assign to Deployment", 
+            valid_deps, 
+            format_func=lambda x: f"{x} - {dep_map.get(x, '')}",
+            key="kit_import_dep"
+        )
+        
+        uploaded_file = c_imp2.file_uploader("Upload Kit Excel", type=['xlsx', 'xls'], key="kit_upload")
+        
+        if uploaded_file and target_dep:
+            if st.button("Process Import"):
+                try:
+                    # Mock Logic: We just create a dummy kit entry based on filename
+                    # In real app: df = pd.read_excel(uploaded_file)
+                    
+                    new_kit = {
+                        "id": len(kits_df) + 1,
+                        "kit_name": uploaded_file.name.split('.')[0],
+                        "kit_number": f"KIT-{len(kits_df) + 1:03d}",
+                        "version": "1.0",
+                        "deployment_id": target_dep,
+                        "item_count": 0 # Would be len(df)
+                    }
+                    
+                    st.session_state['db_state']['kits'] = pd.concat([kits_df, pd.DataFrame([new_kit])], ignore_index=True)
+                    st.toast(f"Imported {new_kit['kit_name']} to {target_dep}")
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"Import Failed: {e}")
 def view_shipping():
     st.title("Shipping & Logistics")
     
@@ -986,7 +1330,7 @@ def view_shipping():
     if 'editing_shipment_uid' not in st.session_state:
         st.session_state['editing_shipment_uid'] = None
         
-    df = st.session_state['shipping']
+    df = db.get_table('shipping')
     
     # --- ACTIONS ---
     def handle_save_shipment(uid, deploy_id, carrier, track, ord_date, items_df):
@@ -996,22 +1340,22 @@ def view_shipping():
         
         # 1. Update/Add Header
         new_row = {
-            "uid": uid,
+            "id": uid, # Using 'id' internal integer
             "deployment_id": deploy_id,
             "carrier": carrier,
             "tracking_number": track,
-            "order_date": ord_date,
+            "order_date": pd.to_datetime(ord_date),
             "status": "Ordered", # Simplification
             "item_count": len(items_df) if items_df is not None else 0
         }
         
         # Mock Insert/Update
-        existing_idx = df.index[df['uid'] == uid].tolist()
+        existing_idx = df.index[df['id'] == uid].tolist()
         if existing_idx:
             for col, val in new_row.items():
-                st.session_state['shipping'].at[existing_idx[0], col] = val
+                st.session_state['db_state']['shipping'].at[existing_idx[0], col] = val
         else:
-             st.session_state['shipping'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+             st.session_state['db_state']['shipping'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
              
         # 2. Update Items (MockDB doesn't have a separate shipment_items table yet, so we just track count)
         # In V4 we'd save the items_df to a 'shipment_items' table.
@@ -1031,16 +1375,24 @@ def view_shipping():
             
         st.dataframe(
             df, 
-            use_container_width=True,
+            width="stretch",
             column_config={
                 "order_date": st.column_config.DateColumn("Date"),
-                "uid": st.column_config.TextColumn("Reference"),
+                "id": st.column_config.NumberColumn("ID", format="%d"),
+                "tracking_number": st.column_config.TextColumn("Tracking #"),
                 "status": st.column_config.TextColumn("Status"),
             }
         )
         
         # Quick Edit (Mock)
-        sel_uid = st.selectbox("Select Shipment to Edit", df['uid'].unique(), index=None, placeholder="Choose shipment...")
+        # Quick Edit (Mock)
+        # Select using tracking number for display, but logic uses ID? 
+        # For simplicity in mock, select ID.
+        try:
+            sel_uid = st.selectbox("Select Shipment to Edit", df['id'].unique(), index=None, placeholder="Choose shipment ID...", format_func=lambda x: f"ID {x}")
+        except KeyError:
+             st.error("Data Error: 'id' column missing in Shipping table.")
+             sel_uid = None
         if sel_uid:
             if st.button(f"Edit {sel_uid}"):
                 st.session_state['editing_shipment_uid'] = sel_uid
@@ -1054,27 +1406,126 @@ def view_shipping():
         st.subheader(f"{'New' if is_new else 'Edit'} Shipment")
         
         # Pre-fill
-        record = df[df['uid'] == uid_target].iloc[0] if not is_new and not df[df['uid'] == uid_target].empty else {}
+        # Pre-fill
+        record = df[df['id'] == uid_target].iloc[0] if not is_new and not df[df['id'] == uid_target].empty else {}
         
-        with st.form("shipment_form"):
-            c1, c2 = st.columns(2)
-            s_uid = c1.text_input("UID / Reference", value=record.get('uid', f"SHIP-{datetime.now().strftime('%y%m%d')}-001"))
-            s_dep = c2.selectbox("Deployment", db.get_table('deployments')['deployment_id'].unique())
+        # Header Inputs (No Form Wrapper to allow "Add Line" interactivity)
+        c1, c2 = st.columns(2)
+        # Use Number Input for ID since schema is Integer
+        s_uid = c1.number_input("Shipment ID", value=record.get('id', int(datetime.now().strftime('%y%m%d01'))), step=1, format="%d")
+        
+        # Deployment Combo (ID + Name)
+        dep_df = db.get_table('deployments')
+        dep_map = dict(zip(dep_df['deployment_id'], dep_df['name']))
+        s_dep = c2.selectbox("Deployment", dep_df['deployment_id'].unique(), format_func=lambda x: f"{x} - {dep_map.get(x, '')}")
+        
+        c3, c4 = st.columns(2)
+        s_carrier = c3.text_input("Carrier", value=record.get('carrier', ''))
+        s_track = c4.text_input("Tracking #", value=record.get('tracking_number', ''))
+        
+        s_date = st.date_input("Order Date", value=record.get('order_date', datetime.now()))
+        
+        st.divider()
+        st.markdown("#### Manifest Items")
+        
+        # Smart Add Item
+        st.markdown("Add Item to Manifest")
+        c_add1, c_add2, c_add3, c_add4 = st.columns([3, 2, 1, 1])
+        
+        # Suggest from Catalog
+        catalog_df = db.get_table('parts_catalog')
+        
+        # Create content for selectbox
+        # Format: "PN | Desc"
+        part_map = {}
+        if not catalog_df.empty:
+            for _, row in catalog_df.iterrows():
+                label = f"{row['part_number']} | {row['description']}"
+                part_map[label] = row
+        
+        part_options = list(part_map.keys())
+        
+        # State for Smart Add - Initialize widget keys directly if needed
+        if 'input_pn' not in st.session_state: st.session_state['input_pn'] = ""
+        if 'input_desc' not in st.session_state: st.session_state['input_desc'] = ""
+        if 'input_qty' not in st.session_state: st.session_state['input_qty'] = 1
+        
+        # Selectbox for lookup
+        # If user selects something, we auto-fill and disable text inputs for PN/Desc
+        sel_part_label = c_add1.selectbox("Lookup Part (Select or leave empty for new)", [""] + part_options, key="lookup_part_selectbox")
+        
+        is_catalog_item = False
+        if sel_part_label and sel_part_label != "":
+            is_catalog_item = True
+            row_data = part_map[sel_part_label]
+            # Force update session state for widgets to reflect the change immediately
+            st.session_state['input_pn'] = row_data['part_number']
+            st.session_state['input_desc'] = row_data['description']
+        
+        # Inputs
+        # If catalog item selected, disable editing core fields to ensure consistency
+        # REMOVED value=... kwarg to avoid warning. State is managed via key.
+        new_pn = c_add1.text_input("Part Number", key="input_pn", disabled=is_catalog_item)
+        new_desc = c_add2.text_input("Description", key="input_desc", disabled=is_catalog_item)
+        new_qty = c_add3.number_input("Qty", min_value=1, key="input_qty")
+        
+        # Temporary Manifest Storage
+        if 'temp_manifest' not in st.session_state:
+            st.session_state['temp_manifest'] = []
+
+        # Button to Add
+        if c_add4.button("Add Line", type="secondary"):
+            # If catalog item, we trust values. If not, we take inputs.
+            # However, if disabled, st.session_state.input_pn might not carry the value? 
+            # Streamlit quirk: disabled inputs don't always submit value if relying on state.
+            # We use local vars `new_pn` / `new_desc` which capture the return of text_input.
             
-            c3, c4 = st.columns(2)
-            s_carrier = c3.text_input("Carrier", value=record.get('carrier', ''))
-            s_track = c4.text_input("Tracking #", value=record.get('tracking_number', ''))
+            final_pn = new_pn
+            final_desc = new_desc
             
-            s_date = st.date_input("Order Date", value=record.get('order_date', datetime.now()))
+            if final_pn:
+                # 1. Add to Manifest List
+                st.session_state['temp_manifest'].append({
+                    "part_number": final_pn,
+                    "description": final_desc,
+                    "quantity": new_qty
+                })
+                
+                # 2. Check/Add to Parts Catalog (Only if NOT catalog item)
+                if not is_catalog_item:
+                        existing_part = catalog_df[catalog_df['part_number'] == final_pn]
+                        if existing_part.empty:
+                            new_part_id = len(catalog_df) + 1
+                            new_part_entry = {
+                                "id": new_part_id,
+                                "part_number": final_pn,
+                                "description": final_desc,
+                                "category": "Uncategorized",
+                                "created_at": date.today()
+                            }
+                            st.session_state['db_state']['parts_catalog'] = pd.concat([catalog_df, pd.DataFrame([new_part_entry])], ignore_index=True)
+                            st.toast(f"New Part Created: {final_pn}")
+                
+                # Reset manual inputs
+                st.session_state['smart_add_pn'] = ""
+                st.session_state['smart_add_desc'] = ""
+                st.session_state['smart_add_qty'] = 1
+                st.rerun()
+            else:
+                st.error("Part Number is required.")
+
+        # Display Manifest
+        manifest_df = pd.DataFrame(st.session_state['temp_manifest'])
+        if not manifest_df.empty:
+            st.dataframe(manifest_df, width="stretch")
+        
+        st.divider()
+        if st.button("Save Shipment", type="primary"):
+            final_items_df = pd.DataFrame(st.session_state['temp_manifest'])
+            handle_save_shipment(s_uid, s_dep, s_carrier, s_track, s_date, final_items_df)
             
-            st.markdown("#### Manifest Items")
-            # Mock Item Editor
-            # We create a dummy DF for the editor
-            dummy_items = pd.DataFrame([{"part": "", "qty": 1, "desc": ""} for _ in range(5)])
-            edited_items = st.data_editor(dummy_items, num_rows="dynamic", width="stretch")
-            
-            if st.form_submit_button("Save Shipment"):
-                handle_save_shipment(s_uid, s_dep, s_carrier, s_track, s_date, edited_items)
+            # Clear Temp
+            st.session_state['temp_manifest'] = []
         
         if st.button("Cancel"):
             st.session_state['shipping_view_mode'] = 'list'
@@ -1181,8 +1632,30 @@ elif current_page == "Shipping":
 elif current_page == "Service Bulletins":
     view_service_bulletins()
 elif current_page == "Deployments":
-    st.title("Deployments")
-    st.dataframe(db.get_table('deployments'))
+    st.title("Deployments Management")
+    st.info("📝 Manage deployments below. Use the '+' toolbar to add new deployments.")
+    
+    dep_df = db.get_table('deployments')
+    
+    edited_dep_df = st.data_editor(
+        dep_df,
+        key="deployments_editor",
+        num_rows="dynamic",
+        width="stretch",
+        column_config={
+            "deployment_id": st.column_config.TextColumn("Deployment ID", required=True, help="Unique Identifier (e.g. DEP-001)"),
+            "name": st.column_config.TextColumn("Description", required=True),
+            "status": st.column_config.SelectboxColumn("Status", options=["Active", "Planned", "Archived", "Complete"], required=True),
+            "start_date": st.column_config.DateColumn("Start Date"),
+            "end_date": st.column_config.DateColumn("End Date"),
+            "location": st.column_config.TextColumn("Location"),
+        }
+    )
+    
+    # Save Logic
+    if not edited_dep_df.equals(dep_df):
+        st.session_state['db_state']['deployments'] = edited_dep_df
+        st.toast("✅ Deployments updated successfully!")
 else:
     st.title(current_page)
     st.warning("Module under active development.")

@@ -29,6 +29,8 @@ class FoundryBackend:
             
     def is_configured(self) -> bool:
         mode = self.config.get("MODE", "local").lower()
+        if mode == "foundry_internal":
+            return bool(self.datasets)
         return mode == "foundry" and bool(self.base_url and self.token and self.datasets)
 
     def get_dataset_rid(self, name: str) -> Optional[str]:
@@ -42,6 +44,13 @@ class FoundryBackend:
         if not rid:
             print(f"Dataset {dataset_name} not configured.")
             return pd.DataFrame()
+            
+        mode = self.config.get("MODE", "local").lower()
+        if mode == "foundry_internal":
+             # Internal Foundry Read (Sidecar/FileSystem/Proxy)
+             # This is a placeholder for where the actual internal read logic would go
+             print(f"Reading {dataset_name} ({rid}) via internal mapping...")
+             return pd.DataFrame()
             
         # Using the standard Foundry Datasets API to read the latest transaction's file
         # Flow: Get Schema -> Read Table (Simplification: Use read endpoint if available or export)

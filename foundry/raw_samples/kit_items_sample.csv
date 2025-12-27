@@ -1,0 +1,5 @@
+kit_id,part_number,description,quantity,actual_quantity,serial_number,category,last_updated_by
+1,PN-005,Screw,10,10,N/A,Consumable,System
+1,PN-010,Propeller,1,1,N/A,Rotable,System
+2,PN-100,Lens Wipe,5,3,N/A,Consumable,System
+2,PN-200,Sensor Module,1,1,SN-999,Rotable,System
