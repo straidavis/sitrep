@@ -61,7 +61,7 @@ const getAuthMode = () => {
         return foundryConfig.AUTH.TYPE;
     }
     // 3. Fallback to Env default or 'local'
-    return env.VITE_AUTH_MODE || 'local';
+    return env.VITE_AUTH_MODE || 'microsoft'; // Defaulting to microsoft per user request for local dev
 };
 
 const authMode = getAuthMode();

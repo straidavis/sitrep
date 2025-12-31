@@ -1,6 +1,16 @@
 const fs = require('fs');
 const path = require('path');
 
+// --- LOGGING SETUP ---
+const logFile = path.join(__dirname, 'server_debug.log');
+const log = (msg) => {
+    const entry = `[${new Date().toISOString()}] ${msg}\n`;
+    fs.appendFileSync(logFile, entry);
+    console.log(msg);
+};
+
+log("Server Starting...");
+
 // Try to load local config (for standalone EXE usage)
 // Search priority: 1. Next to EXE, 2. Root dir via ../client (dev)
 const exeDir = path.dirname(process.execPath);
@@ -14,7 +24,7 @@ let addedConfig = false;
 for (const cfgPath of configPaths) {
     if (fs.existsSync(cfgPath)) {
         try {
-            console.log(`Loading config from ${cfgPath}`);
+            log(`Loading config from ${cfgPath}`);
             const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
             // Map Config to Env Vars if not set
             // Example: Force local sqlite if running standalone
@@ -27,12 +37,21 @@ for (const cfgPath of configPaths) {
             addedConfig = true;
             break;
         } catch (e) {
-            console.error("Error reading config", e);
+            log(`Error reading config: ${e.message}`);
         }
     }
 }
 
-require('dotenv').config();
+// LOAD ENV from foundry_client if available
+const clientEnv = path.join(__dirname, '../foundry_client/.env');
+if (fs.existsSync(clientEnv)) {
+    log(`Loading .env from ${clientEnv}`);
+    require('dotenv').config({ path: clientEnv });
+} else {
+    log("Loading standard .env");
+    require('dotenv').config();
+}
+
 const express = require('express');
 const cors = require('cors');
 const sequelize = require('./config/database');
@@ -44,6 +63,13 @@ const Deployment = require('./models/Deployment');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// DEBUG: Log Auth Config Status
+log("--- Auth Config Check ---");
+log(`CLIENT_ID: ${process.env.VITE_AZURE_CLIENT_ID ? "[SET]" : "[MISSING]"}`);
+log(`TENANT_ID: ${process.env.VITE_AZURE_TENANT_ID ? "[SET]" : "[MISSING]"}`);
+log(`CLIENT_SECRET: ${process.env.VITE_AZURE_CLIENT_SECRET ? "[SET]" : "[MISSING]"}`);
+log("-------------------------");
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -51,8 +77,98 @@ app.use(express.json());
 // Health Check
 app.get('/health', (req, res) => res.sendStatus(200));
 
-// Auth Middleware
+// --- Auth Dependencies & Config ---
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
+const passport = require('passport');
+const OIDCStrategy = require('passport-azure-ad').OIDCStrategy;
 
+// Mock Easy Auth Config using Env Vars (User must provide these)
+if (process.env.VITE_AZURE_CLIENT_ID && process.env.VITE_AZURE_CLIENT_SECRET) {
+    log("Enabling OIDC Auth Emulation (Manual Redirect Mode)");
+
+    // Session Config
+    app.use(cookieParser());
+    app.use(session({
+        secret: 'super_secret_local_dev_key',
+        resave: false,
+        saveUninitialized: false,
+        cookie: { secure: false }
+    }));
+    app.use(passport.initialize());
+    app.use(passport.session());
+
+    passport.serializeUser((user, done) => done(null, user));
+    passport.deserializeUser((user, done) => done(null, user));
+
+    // 1. Manual Login Redirect (Bypasses Passport Strategy validation)
+    app.get('/.auth/login/aad', (req, res) => {
+        const tenant = process.env.VITE_AZURE_TENANT_ID || 'common';
+        const clientId = process.env.VITE_AZURE_CLIENT_ID;
+        const redirectUrl = `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?` +
+            `client_id=${clientId}` +
+            `&response_type=id_token` +
+            `&redirect_uri=http://localhost:3000` +
+            `&response_mode=fragment` +
+            `&scope=openid profile email` +
+            `&state=12345` +
+            `&nonce=${Math.random().toString(36).substring(7)}`;
+
+        res.redirect(redirectUrl);
+    });
+
+    // 2. Callback Endpoint (Legacy/Unused for fragment mode but kept for safety)
+    app.post('/.auth/login/aad/callback', (req, res) => {
+        res.status(200).json({ status: "Callback ignored. Frontend handles fragment." });
+    });
+
+    // Manual Login Endpoint (Frontend sends id_token/code)
+    app.post('/.auth/manual-login', async (req, res) => {
+        const { user } = req.body;
+        if (user) {
+            // Mock session creation
+            req.login(user, (err) => {
+                if (err) return res.status(500).json({ error: err });
+                return res.json({ success: true, user });
+            });
+        } else {
+            res.status(400).json({ error: "No user provided" });
+        }
+    });
+
+    // 3. Me Endpoint (Mimic App Service)
+    app.get('/.auth/me', (req, res) => {
+        if (req.isAuthenticated()) {
+            // Emulate App Service Payload
+            const payload = [{
+                user_id: req.user._json.email || req.user._json.preferred_username || req.user.oid,
+                user_claims: Object.entries(req.user._json).map(([typ, val]) => ({ typ, val })),
+                provider_name: "aad"
+            }];
+            res.json(payload);
+        } else {
+            res.status(401).json(null);
+        }
+    });
+
+    // 4. Logout
+    app.get('/.auth/logout', (req, res) => {
+        req.logout(() => {
+            res.redirect('/');
+        });
+    });
+
+} else {
+    console.warn("Missing VITE_AZURE_CLIENT_ID or CLIENT_SECRET. Auth Emulation Routes skipped.");
+    // Fallback route to explain why it failed
+    app.use('/.auth/*', (req, res) => {
+        res.status(500).json({
+            error: "Auth Routes not enabled on server.",
+            details: "Missing VITE_AZURE_CLIENT_ID or VITE_AZURE_CLIENT_SECRET in server environment.",
+            checkLogs: "See server console for '[MISSING]' config logs."
+        });
+    });
+}
 
 // Routes
 

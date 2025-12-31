@@ -64,19 +64,20 @@ const Flights = () => {
     // Let's just use the columns array construction:
     const baseHeaders = getTableHeaders('flights');
     const displayColumns = [
-        baseHeaders.find(h => h.key === 'date'),
-        { key: 'deploymentName', label: 'Deployment' },
-        baseHeaders.find(h => h.key === 'missionNumber'),
-        baseHeaders.find(h => h.key === 'scheduledLaunchTime'),
-        baseHeaders.find(h => h.key === 'launchTime'),
-        baseHeaders.find(h => h.key === 'recoveryTime'),
-        baseHeaders.find(h => h.key === 'hours'),
-        { key: 'respParty', label: 'Resp. Party' },
-        baseHeaders.find(h => h.key === 'status'),
-        { key: 'notes', label: 'Notes' },
-        baseHeaders.find(h => h.key === 'updatedBy'),
-        { key: 'actions', label: 'Actions' }
-    ].filter(Boolean); // Filter undefined if schema changes
+        { ...baseHeaders.find(h => h.key === 'date'), width: '140px' },
+        { key: 'deploymentName', label: 'Deployment', width: '110px' },
+        { ...baseHeaders.find(h => h.key === 'missionNumber'), width: '140px' },
+        { ...baseHeaders.find(h => h.key === 'aircraftNumber'), width: '100px' },
+        { ...baseHeaders.find(h => h.key === 'scheduledLaunchTime'), width: '85px', label: 'Sched' },
+        { ...baseHeaders.find(h => h.key === 'launchTime'), width: '85px', label: 'Launch' },
+        { ...baseHeaders.find(h => h.key === 'recoveryTime'), width: '85px', label: 'Recov' },
+        { ...baseHeaders.find(h => h.key === 'hours'), width: '70px' },
+        { key: 'respParty', label: 'Resp. Party', width: '110px' },
+        { ...baseHeaders.find(h => h.key === 'status'), width: '100px' },
+        { key: 'notes', label: 'Notes', width: 'auto' },
+        { ...baseHeaders.find(h => h.key === 'updatedBy'), width: '110px' },
+        { key: 'actions', label: 'Actions', width: '100px' }
+    ].filter(c => c && c.key); // Filter undefined if schema changes
 
     // ... (renderCell logic)
     const renderCell = (flight, col) => {
@@ -636,7 +637,9 @@ const Flights = () => {
                         <thead>
                             <tr>
                                 {displayColumns.map(col => (
-                                    <th key={col.key}>{col.label}</th>
+                                    <th key={col.key} style={{ width: col.width, minWidth: col.width }}>
+                                        {col.label}
+                                    </th>
                                 ))}
                             </tr>
                         </thead>

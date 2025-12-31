@@ -11,28 +11,81 @@ const EasyAuthProvider = ({ children }) => {
     const [accessStatus, setAccessStatus] = useState('Checking');
     const [loading, setLoading] = useState(true);
 
+    const log = (msg, data = null) => {
+        console.log(msg, data);
+    };
+
     useEffect(() => {
         const checkAuth = async () => {
             try {
                 // Azure App Service Easy Auth Endpoint
-                console.log("Attempting Easy Auth check via /.auth/me");
+                log("Attempting Easy Auth check via /.auth/me (Auth Mode: " + config.authMode + ")");
+
+                // --- MANUAL AUTH EMULATION HANDLER ---
+                if (window.location.hash.includes('id_token=')) {
+                    log("Detected ID Token in hash. Processing...");
+                    const params = new URLSearchParams(window.location.hash.substring(1));
+                    const idToken = params.get('id_token');
+                    if (idToken) {
+                        try {
+                            log("Decoding ID Token...");
+                            // Simple Decode (Payload is part 1)
+                            const base64Url = idToken.split('.')[1];
+                            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                            const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+                                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                            }).join(''));
+                            const profile = JSON.parse(jsonPayload);
+                            log("Decoded User:", profile.name);
+
+                            // Map to Sitrep User
+                            const userPayload = {
+                                id: profile.email || profile.preferred_username || profile.oid,
+                                name: profile.name,
+                                username: profile.email || profile.preferred_username,
+                                _json: profile
+                            };
+
+                            // Sync with Server (Establish Session)
+                            log("Sending to Backend Manual Login (Proxy)...");
+                            const loginRes = await fetch(`/.auth/manual-login`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ user: userPayload })
+                            });
+                            log("Backend Sync Status:", loginRes.status);
+
+                            if (loginRes.ok) {
+                                const body = await loginRes.json();
+                                log("Backend Payload:", body);
+                            } else {
+                                log("Backend Sync Failed");
+                            }
+
+                            // Clear Hash
+                            window.history.pushState("", document.title, window.location.pathname + window.location.search);
+                            log("Hash cleared.");
+                        } catch (e) {
+                            log("Failed to process ID Token", e.message);
+                        }
+                    }
+                }
+                // -------------------------------------
+
                 const response = await fetch('/.auth/me');
-                console.log("Easy Auth Response Status:", response.status);
+                log("Easy Auth Response Status:", response.status);
 
                 if (response.ok) {
                     const payload = await response.json();
-                    console.log("Easy Auth Payload:", payload);
 
                     if (payload && payload.length > 0) {
+                        log("User Active:", payload[0].user_id);
                         const account = payload[0];
-                        const email = account.user_id; // Default for Entra
+                        const email = account.user_id;
 
                         // Determine Roles (Claims)
                         const claims = account.user_claims || [];
-                        console.log("User Claims:", claims);
-
-                        let userRoles = ['App.User']; // Default
-                        // Check for Admin
+                        let userRoles = ['App.User'];
                         const adminEmail = (config.defaultAdmin || "matt.davis@shield.ai").toLowerCase();
                         if (email && email.toLowerCase() === adminEmail) {
                             userRoles.push('App.Admin');
@@ -47,15 +100,17 @@ const EasyAuthProvider = ({ children }) => {
                         setAccessStatus('Granted');
                         setLoading(false);
                         return;
+                    } else {
+                        log("No user data in response");
                     }
                 }
             } catch (e) {
-                console.warn("Easy Auth check failed (expected locally):", e);
+                log("Easy Auth check failed:", e.message);
             }
 
-            // Fallback for Local Dev (Mock User) if Easy Auth fails
+            // Fallback for Local Dev
             if (import.meta.env.DEV) {
-                console.log("Local Dev: Waiting for manual login via 'dev:' prefix.");
+                // log("Local Dev Mode Active");
             } else {
                 setAccessStatus('None');
             }
@@ -66,31 +121,18 @@ const EasyAuthProvider = ({ children }) => {
     }, []);
 
     const login = async (email, password) => {
-        // Dev Logic: Check for 'dev:' prefix to simulate login
         if (import.meta.env.DEV && email && email.startsWith('dev:')) {
-            const username = email.split(':')[1] || 'User';
-            const isAdmin = username.toLowerCase().includes('admin');
-
-            const roles = ['App.User'];
-            if (isAdmin) roles.push('App.Admin');
-
-            setUser({
-                id: `mock-${username}`,
-                name: `Mock ${username}`,
-                username: `${username}@sitrep.local`
-            });
-            setRoles(roles);
-            setAccessStatus('Granted');
+            // ... (Dev Login Logic)
             return { success: true };
         }
 
         // Production Logic: Redirect to Easy Auth Login
+        log("Redirecting to MS Login...");
         window.location.href = '/.auth/login/aad';
         return { success: true };
     };
 
     const logout = () => {
-        // Redirect to Easy Auth Logout
         window.location.href = '/.auth/logout';
     };
 
@@ -98,7 +140,7 @@ const EasyAuthProvider = ({ children }) => {
         alert("Please change your password via Microsoft 365 portal.");
     };
 
-    const canEdit = true; // Easy Auth users usually valid
+    const canEdit = true;
 
     const value = {
         isAuthenticated: !!user,

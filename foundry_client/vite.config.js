@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
           secure: false
         },
         '/.auth': {
-          target: env.VITE_APP_SERVICE_URL || 'http://localhost:9999', // Fallback to avoid crash if unset, but obviously won't work
+          target: env.VITE_APP_SERVICE_URL || 'http://localhost:3001', // Target local server for auth emulation
           changeOrigin: true,
           secure: false
         }
