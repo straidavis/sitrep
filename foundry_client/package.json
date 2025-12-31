@@ -1,0 +1,77 @@
+{
+  "name": "spark-client",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "description": "S.P.A.R.K. (Status, Parts, Aircraft Readiness & Kits)",
+  "author": "Shield AI",
+  "scripts": {
+    "dev": "vite",
+    "dev:local": "cross-env VITE_AUTH_MODE=local vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "set NODE_ENV=development && electron .",
+    "electron:start": "vite build && electron .",
+    "package": "vite build && electron-builder build --win portable"
+  },
+  "dependencies": {
+    "@azure/msal-browser": "^4.27.0",
+    "@azure/msal-react": "^3.0.23",
+    "@osdk/client": "^2.6.0",
+    "@osdk/foundry.datasets": "^2.44.0",
+    "bcryptjs": "^3.0.3",
+    "date-fns": "^4.1.0",
+    "electron-squirrel-startup": "^1.0.0",
+    "lucide-react": "^0.441.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.0",
+    "recharts": "^2.12.7",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "cross-env": "^10.1.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "vite": "^4.4.0"
+  },
+  "build": {
+    "appId": "com.uscg.amcr",
+    "productName": "S.P.A.R.K. (Status, Parts, Aircraft Readiness & Kits)",
+    "directories": {
+      "output": "dist_electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraFiles": [
+      {
+        "from": "spark-config.json",
+        "to": "."
+      }
+    ],
+    "win": {
+      "target": "dir",
+      "icon": "public/uscg-logo.svg"
+    },
+    "extraResources": [
+      {
+        "from": "../server",
+        "to": "server",
+        "filter": [
+          "**/*",
+          "!**/*.sqlite",
+          "!**/*.log",
+          "!package-lock.json",
+          "!**/test/**"
+        ]
+      }
+    ]
+  }
+}

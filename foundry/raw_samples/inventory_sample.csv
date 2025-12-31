@@ -1,5 +1,0 @@
-part_number,description,category,quantity_on_hand,min_quantity,expiration_date,last_counted,measured_unit,notes,deployment_id
-PN-001,Gasket,Consumable,20,5,2026-01-01,2025-12-01,Each,,DEP-001
-PN-002,Seal,Consumable,50,10,2026-06-01,2025-12-01,Each,,DEP-001
-PN-003,Filter,Consumable,5,2,2025-12-31,2025-12-01,Each,,DEP-001
-PN-101,Propeller Blade,Rotable,4,2,,2025-12-01,Each,,DEP-002

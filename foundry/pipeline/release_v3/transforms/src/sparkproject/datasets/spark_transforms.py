@@ -108,6 +108,8 @@ KITS_SCHEMA = StructType([
     StructField("id", IntegerType(), False),
     StructField("kit_name", StringType(), True),
     StructField("kit_number", StringType(), True),
+    StructField("version", StringType(), True),
+    StructField("item_count", IntegerType(), True),
     StructField("components", StringType(), True),
     StructField("status", StringType(), True),
     StructField("location", StringType(), True),

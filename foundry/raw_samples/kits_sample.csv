@@ -1,3 +1,0 @@
-kit_number,kit_name,components,status,location,assigned_to,last_inspected,notes,deployment_id
-KIT-001,Maintenance Kit A,PN-005;PN-010,Complete,Hangar,Technician A,2025-12-01,,DEP-001
-KIT-002,Sensor cleaning kit,PN-100;PN-200,Incomplete,Store,Technician B,2025-12-01,Missing sensor module,DEP-002

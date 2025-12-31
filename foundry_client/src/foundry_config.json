@@ -1,0 +1,214 @@
+{
+    "_modes_available": [
+        "local",
+        "foundry",
+        "foundry_internal"
+    ],
+    "MODE": "foundry",
+    "FOUNDRY_URL": "https://shieldai.palantirfoundry.com",
+    "FOUNDRY_TOKEN": "",
+    "FOUNDRY_SAMPLES_FOLDER_RID": "",
+    "AUTH": {
+        "TYPE": "microsoft",
+        "CLIENT_ID": "b5e818eb-882f-4270-a907-dbcb09ca06a7",
+        "TENANT_ID": "d16fb4e4-c36b-4544-98b0-51142c1a2093",
+        "REDIRECT_URI": "http://localhost:3000",
+        "HOST_URL": "http://localhost:3000",
+        "AUTHORIZED_DOMAINS": [
+            "shield.ai",
+            "uscg.mil"
+        ],
+        "ADMIN_USERS": [
+            "matt.davis@shield.ai",
+            "admin"
+        ],
+        "ROLES": {
+            "ADMIN": "App.Admin",
+            "USER": "App.User"
+        }
+    },
+    "ONTOLOGY": {
+        "RID": "",
+        "OBJECTS": {
+            "flights": {
+                "apiName": "UscgFlights",
+                "rid": "",
+                "actions": {
+                    "create": "create-uscg-flights",
+                    "update": "edit-uscg-flights",
+                    "delete": "delete-uscg-flights"
+                },
+                "primaryKey": "missionNumber",
+                "requiresPkOnCreate": true,
+                "foreignKeys": [
+                    "deploymentId"
+                ]
+            },
+            "deployments": {
+                "apiName": "UscgDeployments",
+                "rid": "",
+                "actions": {
+                    "create": "create-uscg-deployments",
+                    "update": "edit-uscg-deployments",
+                    "delete": "delete-uscg-deployments"
+                },
+                "primaryKey": "deploymentId",
+                "requiresPkOnCreate": false,
+                "foreignKeys": []
+            },
+            "equipment": {
+                "apiName": "UscgEquipment",
+                "rid": "",
+                "actions": {
+                    "create": "create-uscg-equipment",
+                    "update": "edit-uscg-equipment",
+                    "delete": "delete-uscg-equipment"
+                },
+                "primaryKey": "uid",
+                "requiresPkOnCreate": false,
+                "foreignKeys": [
+                    "deploymentId"
+                ]
+            },
+            "inventory": {
+                "apiName": "UscgInventory",
+                "rid": "",
+                "actions": {
+                    "create": "create-uscg-inventory",
+                    "update": "edit-uscg-inventory",
+                    "delete": "delete-uscg-inventory"
+                },
+                "primaryKey": "id",
+                "requiresPkOnCreate": false,
+                "foreignKeys": [
+                    "deploymentId"
+                ]
+            },
+            "kits": {
+                "apiName": "UscgKits",
+                "rid": "",
+                "actions": {
+                    "create": "create-uscg-kits",
+                    "update": "edit-uscg-kits",
+                    "delete": "delete-uscg-kits"
+                },
+                "primaryKey": "id",
+                "requiresPkOnCreate": false,
+                "foreignKeys": [
+                    "deploymentId"
+                ]
+            },
+            "kitItems": {
+                "apiName": "UscgKitItems",
+                "rid": "",
+                "actions": {
+                    "create": "create-uscg-kit-items",
+                    "update": "edit-uscg-kit-items",
+                    "delete": "delete-uscg-kit-items"
+                },
+                "primaryKey": "id",
+                "requiresPkOnCreate": true,
+                "foreignKeys": [
+                    "kitId"
+                ]
+            },
+            "partsCatalog": {
+                "apiName": "UscgPartsCatalog",
+                "rid": "",
+                "actions": {
+                    "create": "create-uscg-parts-catalog",
+                    "update": "edit-uscg-parts-catalog",
+                    "delete": "delete-uscg-parts-catalog"
+                },
+                "primaryKey": "partNumber",
+                "requiresPkOnCreate": true,
+                "foreignKeys": []
+            },
+            "partsUtilization": {
+                "apiName": "UscgPartsUtilization",
+                "rid": "",
+                "actions": {
+                    "create": "create-uscg-parts-utilization",
+                    "update": "edit-uscg-parts-utilization",
+                    "delete": "delete-uscg-parts-utilization"
+                },
+                "primaryKey": "id",
+                "requiresPkOnCreate": false,
+                "foreignKeys": [
+                    "deploymentId"
+                ]
+            },
+            "serviceBulletins": {
+                "apiName": "UscgServiceBulletins",
+                "rid": "",
+                "actions": {
+                    "create": "create-uscg-service-bulletins",
+                    "update": "edit-uscg-service-bulletins",
+                    "delete": "delete-uscg-service-bulletins"
+                },
+                "primaryKey": "id",
+                "requiresPkOnCreate": false,
+                "foreignKeys": [
+                    "deploymentId"
+                ]
+            },
+            "shipmentItems": {
+                "apiName": "UscgShipmentItems",
+                "rid": "",
+                "actions": {
+                    "create": "create-uscg-shipment-items",
+                    "update": "edit-uscg-shipment-items",
+                    "delete": "delete-uscg-shipment-items"
+                },
+                "primaryKey": "id",
+                "requiresPkOnCreate": false,
+                "foreignKeys": [
+                    "shipmentId"
+                ]
+            },
+            "shipping": {
+                "apiName": "UscgShipping",
+                "rid": "",
+                "actions": {
+                    "create": "create-uscg-shipping",
+                    "update": "edit-uscg-shipping",
+                    "delete": "delete-uscg-shipping"
+                },
+                "primaryKey": "uid",
+                "requiresPkOnCreate": false,
+                "foreignKeys": [
+                    "deploymentId"
+                ]
+            },
+            "users": {
+                "apiName": "SparkUsers",
+                "rid": "",
+                "actions": {
+                    "create": "create-spark-users",
+                    "update": "edit-spark-users",
+                    "delete": "delete-spark-users"
+                },
+                "primaryKey": "userId",
+                "requiresPkOnCreate": false,
+                "foreignKeys": []
+            }
+        }
+    },
+    "TRANSFORMS_CODE_PATH": "../pipeline/release_v3/transforms/src/sparkproject/datasets/spark_transforms.py",
+    "DATASETS": {
+        "flights": "",
+        "equipment": "",
+        "deployments": "",
+        "inventory": "",
+        "parts_utilization": "",
+        "kits": "",
+        "shipping": "",
+        "service_bulletins": "",
+        "shipment_items": "",
+        "kit_items": "",
+        "parts_catalog": "",
+        "users": "users_dataset",
+        "access_requests": "access_requests_dataset"
+    },
+    "DEFAULT_BRANCH": "master"
+}

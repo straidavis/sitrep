@@ -1,4 +1,0 @@
-part_number,serial_number,description,quantity_used,aircraft_id,date_used,reason_for_replacement,notes,deployment_id
-PN-005,,Screw,2,VBAT-001,2025-12-26,Worn out,,DEP-001
-PN-020,,Bolt,4,VBAT-002,2025-12-26,Missing,,DEP-001
-PN-100,,Lens Wipe,1,VBAT-001,2025-12-26,Routine maintenance,,DEP-001
